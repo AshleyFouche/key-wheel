@@ -212,7 +212,11 @@
     const keyHtml = t.key ? `<span class="key" style="background:${col(parseInt(t.key))}">${t.key}</span>` : `<span class="key none">?</span>`;
     r.innerHTML = `${keyHtml}<span class="bpm">${t.tempo || "–"}</span>
       <span class="tt" role="button" tabindex="0">${m ? `<div class="rel">${m}</div>` : ""}<div>${esc(t.title)}</div><div class="a">${esc(t.artist)}</div></span>
+      <button class="play${playMode === "queue" ? " queue" : ""}" type="button" aria-label="${playMode === "queue" ? "Add to Spotify queue" : "Play in Spotify"}">${playMode === "queue" ? "⤓" : "▶"}</button>
       <button class="add${crate.includes(t.id) ? " in" : ""}" type="button" aria-label="Add to crate">${crate.includes(t.id) ? "✓" : "+"}</button>`;
+    if (np && np.id === t.id) r.classList.add("now");
+    r.dataset.tid = t.id;
+    r.querySelector(".play").onclick = () => playTrack(t);
     const tt = r.querySelector(".tt");
     tt.onclick = () => onPick(t);
     tt.onkeydown = e => { if (e.key === "Enter") onPick(t); };
@@ -230,12 +234,14 @@
   }
   $("more").onclick = () => { state.shown += 60; paintList(); };
 
-  function setAnchor(t, fromTrail) {
+  function setAnchor(t, fromTrail, quiet) {
     if (!t.key) { toast("No key for this track yet"); return; }
     if (!fromTrail && state.trail[state.trail.length - 1] !== t) state.trail.push(t);
     state.anchor = t; state.key = t.key; q.value = "";
     if (t.tempo) { tmin.value = t.tempo - 6; tmax.value = t.tempo + 6; }
-    state.shown = 60; saveState(); go("wheel"); render(); window.scrollTo({ top: 0, behavior: "smooth" });
+    state.shown = 60; saveState();
+    if (quiet) { render(); return; }
+    go("wheel"); render(); window.scrollTo({ top: 0, behavior: "smooth" });
   }
   function pick(k) { state.key = k; state.anchor = null; state.trail = []; state.shown = 60; saveState(); render(); }
   function showAll() { state.trail = []; state.key = null; state.anchor = null; tmin.value = ""; tmax.value = ""; sel.value = ""; state.shown = 60; saveState(); render(); }
@@ -402,7 +408,7 @@
     $("spInfo").textContent = !Spotify.configured() ? "Not set up yet." : Spotify.connected() ? "Connected." : "Not connected.";
     $("logout").hidden = !Spotify.connected();
   }
-  $("logout").onclick = () => { Spotify.logout(); plCache = null; paintSpotifyBtn(); paintMore(); toast("Disconnected from Spotify"); };
+  $("logout").onclick = () => { Spotify.logout(); plCache = null; clearInterval(npTimer); np = null; paintNp(); paintSpotifyBtn(); paintMore(); toast("Disconnected from Spotify"); };
   $("backup").onclick = () => {
     const data = { app: "key-wheel", saved: new Date().toISOString(), extra: ls.get("kw.extra", []), crate, state: { key: state.key, on: state.on } };
     const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
@@ -438,6 +444,73 @@
     if (added) $("paste").value = "";
   };
 
+  // ---------- playback + now playing ----------
+  let np = null, playMode = ls.get("kw.playMode", "play"), follow = ls.get("kw.follow", false), npTimer = null, lastNpId = null;
+  const npBar = $("np");
+  async function playTrack(t) {
+    if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return; }
+    if (!Spotify.canPlay()) { showReconnect(); return; }
+    try {
+      if (playMode === "queue") { await Spotify.queue(t.id); toast("Queued: " + t.title); }
+      else { await Spotify.play(t.id); toast("Playing: " + t.title); }
+      setTimeout(pollNow, 900);
+    } catch (e) { playError(e); }
+  }
+  function playError(e) {
+    if (e.code === "auth") { toast("Spotify sign-in expired. Tap Connect Spotify."); paintSpotifyBtn(); return; }
+    if (e.code === "nodevice") { toast(e.message, 5000); return; }
+    if (e.status === 403) { toast("Spotify refused: playback needs Premium and an active Spotify app.", 5000); return; }
+    toast("Couldn't play: " + e.message, 4000);
+  }
+  function showReconnect() {
+    npBar.hidden = false; document.body.classList.add("has-np");
+    $("npArt").style.backgroundImage = "";
+    $("npTitle").textContent = "Reconnect Spotify to play from Key Wheel";
+    $("npSub").textContent = "One-time step to allow playback control.";
+    $("npPP").textContent = "↻"; $("npPP").onclick = () => Spotify.login().catch(err => toast(err.message));
+  }
+  function paintNp() {
+    if (!np || np.none) { npBar.hidden = true; document.body.classList.remove("has-np"); return; }
+    npBar.hidden = false; document.body.classList.add("has-np");
+    const rec = byId.get(np.id);
+    $("npArt").style.backgroundImage = np.art ? `url("${np.art}")` : "";
+    $("npTitle").textContent = np.title;
+    $("npSub").innerHTML = (rec && rec.key ? `<span class="k" style="background:${col(parseInt(rec.key))}">${rec.key}</span>${rec.tempo ? rec.tempo + " · " : ""}` : '<span class="k" style="background:var(--surface);color:var(--muted)">?</span>') + esc(np.artist);
+    $("npPP").textContent = np.playing ? "❚❚" : "▶";
+    $("npPP").onclick = async () => {
+      try { if (np.playing) await Spotify.pause(); else await Spotify.resume(); np.playing = !np.playing; paintNp(); setTimeout(pollNow, 800); } catch (e) { playError(e); }
+    };
+    $("npMix").disabled = !(rec && rec.key);
+    $("npMix").textContent = rec && rec.key ? "Mix out of this" : "No key yet";
+    document.querySelectorAll(".row.now").forEach(r => r.classList.remove("now"));
+    document.querySelectorAll(`.row[data-tid="${CSS.escape(np.id)}"]`).forEach(r => r.classList.add("now"));
+  }
+  $("npMix").onclick = () => { const rec = np && byId.get(np.id); if (rec && rec.key) setAnchor(rec); };
+  function paintModes() {
+    document.querySelectorAll(".chip-seg button").forEach(b => b.classList.toggle("on", b.dataset.mode === playMode));
+    $("npFollow").setAttribute("aria-pressed", follow ? "true" : "false");
+    $("npFollow").textContent = follow ? "Following ✓" : "Follow";
+  }
+  document.querySelectorAll(".chip-seg button").forEach(b => b.onclick = () => { playMode = b.dataset.mode; ls.set("kw.playMode", playMode); paintModes(); paintList(); if (!$("view-crate").hidden) paintCrate(); });
+  $("npFollow").onclick = () => {
+    follow = !follow; ls.set("kw.follow", follow); paintModes();
+    toast(follow ? "Following what Spotify plays" : "Stopped following");
+    if (follow && np) { const rec = byId.get(np.id); if (rec && rec.key && (!state.anchor || state.anchor.id !== rec.id)) setAnchor(rec, false, true); }
+  };
+  async function pollNow() {
+    if (!Spotify.connected() || !Spotify.canPlay() || document.visibilityState !== "visible") return;
+    try {
+      np = await Spotify.nowPlaying();
+      if (np && !np.none && np.id !== lastNpId) {
+        lastNpId = np.id;
+        if (follow) { const rec = byId.get(np.id); if (rec && rec.key && (!state.anchor || state.anchor.id !== rec.id)) setAnchor(rec, false, true); }
+      }
+      paintNp();
+    } catch (e) { if (e.code === "auth") paintSpotifyBtn(); }
+  }
+  function startPolling() { clearInterval(npTimer); pollNow(); npTimer = setInterval(pollNow, 5000); }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pollNow(); });
+
   // ---------- tabs + spotify button ----------
   function go(v) {
     document.querySelectorAll(".view").forEach(s => s.hidden = s.id !== "view-" + v);
@@ -467,7 +540,9 @@
     crateOptions(); saveCrate(); paintSpotifyBtn(); render();
     let v = "wheel"; try { v = sessionStorage.getItem("kw.view") || "wheel"; } catch (e) {}
     go(v);
-    if (res && res.ok) { toast("Connected to Spotify"); go("playlists"); }
+    paintModes();
+    if (Spotify.connected()) { if (Spotify.canPlay()) startPolling(); else showReconnect(); }
+    if (res && res.ok) { toast("Connected to Spotify"); if (!Spotify.canPlay()) go("playlists"); }
     else if (res && res.error) toast("Spotify sign-in didn't finish: " + res.error, 5000);
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
   })();

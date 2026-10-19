@@ -3,7 +3,8 @@
   const AUTH = "https://accounts.spotify.com/authorize";
   const TOKEN = "https://accounts.spotify.com/api/token";
   const API = "https://api.spotify.com/v1";
-  const SCOPES = "playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public";
+  const SCOPES = "playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public user-read-playback-state user-modify-playback-state user-read-currently-playing";
+  const PLAYER_SCOPES = ["user-read-playback-state", "user-modify-playback-state", "user-read-currently-playing"];
   const KEY = "kw.spotify";
 
   const store = {
@@ -61,6 +62,7 @@
       access: j.access_token,
       refresh: j.refresh_token || prev.refresh,
       expires: Date.now() + (j.expires_in - 60) * 1000,
+      scope: j.scope || prev.scope || "",
       user: prev.user
     });
   }
@@ -92,8 +94,8 @@
     }
     if (r.status === 401) { store.clear(); const e = new Error("Spotify sign-in expired"); e.code = "auth"; throw e; }
     const text = await r.text();
-    const j = text ? JSON.parse(text) : {};
-    if (!r.ok) { const e = new Error((j.error && j.error.message) || ("Spotify error " + r.status)); e.status = r.status; throw e; }
+    let j = {}; try { j = text ? JSON.parse(text) : {}; } catch (e) { j = {}; }
+    if (!r.ok) { const e = new Error((j.error && j.error.message) || ("Spotify error " + r.status)); e.status = r.status; e.reason = j.error && j.error.reason; throw e; }
     return j;
   }
 
@@ -143,7 +145,40 @@
     return pl;
   }
 
+  // ---- playback (Spotify Connect: plays on whichever device Spotify is active on) ----
+  const canPlay = () => { const t = store.get(); return !!t && PLAYER_SCOPES.every(sc => (t.scope || "").includes(sc)); };
+  async function devices() { return (await api("/me/player/devices")).devices || []; }
+  async function pickDevice() {
+    const ds = await devices();
+    return ds.find(d => d.is_active) || ds.find(d => d.type === "Smartphone") || ds[0] || null;
+  }
+  async function withDevice(fn) {
+    try { return await fn(null); }
+    catch (e) {
+      if (e.status !== 404) throw e;           // 404 = no active device; wake the best available one
+      const d = await pickDevice();
+      if (!d) { const err = new Error("Open Spotify on your phone or another device first, then try again."); err.code = "nodevice"; throw err; }
+      return fn(d.id);
+    }
+  }
+  const q = id => id ? "?device_id=" + encodeURIComponent(id) : "";
+  const play = trackId => withDevice(dev => api("/me/player/play" + q(dev), { method: "PUT", body: JSON.stringify({ uris: ["spotify:track:" + trackId] }) }));
+  const queue = trackId => withDevice(dev => api("/me/player/queue?uri=" + encodeURIComponent("spotify:track:" + trackId) + (dev ? "&device_id=" + encodeURIComponent(dev) : ""), { method: "POST" }));
+  const pause = () => api("/me/player/pause", { method: "PUT" });
+  const resume = () => withDevice(dev => api("/me/player/play" + q(dev), { method: "PUT" }));
+  async function nowPlaying() {
+    const j = await api("/me/player/currently-playing");
+    if (!j || !j.item || j.currently_playing_type !== "track") return j && j.is_playing !== undefined ? { playing: false, none: true } : null;
+    const t = j.item;
+    return {
+      id: t.id, title: t.name, artist: (t.artists || []).map(a => a.name).join(", "),
+      art: t.album && t.album.images && t.album.images.length ? t.album.images[t.album.images.length - 1].url : "",
+      playing: !!j.is_playing, progress: j.progress_ms || 0, duration: t.duration_ms || 0
+    };
+  }
+
   window.Spotify = {
+    canPlay, play, queue, pause, resume, nowPlaying, devices,
     login, handleRedirect, connected: () => !!store.get(), logout: () => store.clear(),
     me, myPlaylists, playlistTracks, createPlaylist, addTracks, configured: () => !!window.CONFIG.spotifyClientId
   };

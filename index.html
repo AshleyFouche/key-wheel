@@ -99,6 +99,20 @@
   </section>
 </main>
 
+<div class="np" id="np" hidden>
+  <div class="np-main">
+    <span class="np-art" id="npArt"></span>
+    <div class="np-text"><div class="np-t" id="npTitle"></div><div class="np-a" id="npSub"></div></div>
+    <button class="np-pp" id="npPP" type="button" aria-label="Play or pause">▶</button>
+  </div>
+  <div class="np-acts">
+    <button class="chip" id="npMix" type="button">Mix out of this</button>
+    <div class="chip-seg" role="radiogroup" aria-label="What the play buttons do">
+      <button type="button" data-mode="play" class="on">▶ Play now</button><button type="button" data-mode="queue">＋ Queue</button>
+    </div>
+    <button class="chip" id="npFollow" type="button" aria-pressed="false">Follow</button>
+  </div>
+</div>
 <nav class="tabs" aria-label="Sections">
   <button data-view="wheel" class="on" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>Wheel</button>
   <button data-view="crate" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="16" height="13" rx="2"/><path d="M8 7V4h8v3"/></svg>Crate <span class="badge" id="crateBadge" hidden></span></button>

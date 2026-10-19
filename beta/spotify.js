@@ -3,7 +3,7 @@
   const AUTH = "https://accounts.spotify.com/authorize";
   const TOKEN = "https://accounts.spotify.com/api/token";
   const API = "https://api.spotify.com/v1";
-  const SCOPES = "playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-recently-played";
+  const SCOPES = "playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-recently-played user-library-read user-library-modify";
   const PLAYER_SCOPES = ["user-read-playback-state", "user-modify-playback-state", "user-read-currently-playing", "user-read-recently-played"];
   const KEY = "kwb.spotify";
 
@@ -183,6 +183,20 @@
   }
 
   // ---- playback (Spotify Connect: plays on whichever device Spotify is active on) ----
+  // Liked Songs / saved albums (Spotify's /me/library, February 2026). Up to 40 URIs per request.
+  const LIB_SCOPES = ["user-library-read", "user-library-modify"];
+  const canLibrary = () => { const t = store.get(); return !!t && LIB_SCOPES.every(sc => (t.scope || "").split(" ").includes(sc)); };
+  async function libContains(uris) {
+    const out = [];
+    for (let i = 0; i < uris.length; i += 40) {
+      const part = uris.slice(i, i + 40);
+      const r = await api("/me/library/contains?uris=" + part.map(encodeURIComponent).join(","));
+      part.forEach((u, j) => out.push(!!(Array.isArray(r) ? r[j] : false)));
+    }
+    return out;
+  }
+  const libSave = uris => api("/me/library?uris=" + uris.map(encodeURIComponent).join(","), { method: "PUT" });
+  const libRemove = uris => api("/me/library?uris=" + uris.map(encodeURIComponent).join(","), { method: "DELETE" });
   const canPlay = () => { const t = store.get(); return !!t && PLAYER_SCOPES.every(sc => (t.scope || "").includes(sc)); };
   async function devices() { return (await api("/me/player/devices")).devices || []; }
   const setVolume = pct => api("/me/player/volume?volume_percent=" + Math.max(0, Math.min(100, Math.round(pct))), { method: "PUT" });
@@ -337,6 +351,7 @@
     recentlyPlayed, playerState, upNext, seek, next, previous,
     log: () => LOG.slice(), rawPlayer: () => api("/me/player"),
     trackArt: async id => { const t = await api("/tracks/" + id); return t.album && t.album.images && t.album.images.length ? t.album.images[t.album.images.length - 1].url : ""; },
+    canLibrary, libContains, libSave, libRemove,
     setDeviceChooser: f => { chooser = f; },
     liveAdd, liveRemove, liveMove, liveReplace, playPlaylist,
     canPlay, play, playContext, playList, setShuffle, queue, pause, resume, nowPlaying, devices,

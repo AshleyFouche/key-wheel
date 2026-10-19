@@ -261,6 +261,44 @@
     } catch (e) {}
   }
 
+  // ---------- Liked Songs ----------
+  // Green ✓ = in your Spotify library (Liked Songs / saved albums), checked 40 at a time and remembered for this session.
+  const liked = new Map();
+  let likeWant = new Set(), likeTimer = 0;
+  function likeCheck(uri) {
+    if (!uri || liked.has(uri) || !Spotify.connected() || !Spotify.canLibrary()) return;
+    likeWant.add(uri); clearTimeout(likeTimer); likeTimer = setTimeout(likeFlush, 250);
+  }
+  async function likeFlush() {
+    const uris = [...likeWant]; likeWant.clear(); if (!uris.length) return;
+    try { const r = await Spotify.libContains(uris); uris.forEach((u, i) => liked.set(u, r[i])); paintLikes(); } catch (e) {}
+  }
+  function paintLikes() {
+    document.querySelectorAll("[data-lk]").forEach(el => {
+      const on = liked.get(el.dataset.lk) === true;
+      el.classList.toggle("on", on);
+      if (el.classList.contains("albumlike")) el.innerHTML = on ? IC.liked + "Saved" : IC.likeAdd + "Save album";
+    });
+    paintLikeBtns();
+  }
+  function paintLikeBtns() {
+    const uri = np && np.id ? "spotify:track:" + np.id : null, on = !!uri && liked.get(uri) === true;
+    ["npLike", "pvLike"].forEach(id => { const b = $(id); if (!b) return; b.innerHTML = on ? IC.liked : IC.likeAdd; b.classList.toggle("on", on); b.setAttribute("aria-label", on ? "Remove from Liked Songs" : "Add to Liked Songs"); b.hidden = !uri; });
+    if (uri) likeCheck(uri);
+  }
+  async function toggleLike(uri, label) {
+    if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return; }
+    if (!Spotify.canLibrary()) { toast("One-time step: reconnecting Spotify so ASH//FLOW can add to your library…", 3000); setTimeout(() => Spotify.login().catch(e => toast(e.message)), 1500); return; }
+    const on = liked.get(uri) === true, what = uri.includes(":album:") ? "album" : "song";
+    liked.set(uri, !on); paintLikes();
+    try {
+      if (on) await Spotify.libRemove([uri]); else await Spotify.libSave([uri]);
+      toast(on ? `Removed ${what} from your library` : `Added to your library${label ? ": " + label : ""}`);
+    } catch (e) { liked.set(uri, on); paintLikes(); playError(e); }
+  }
+  $("npLike").onclick = () => { if (np) toggleLike("spotify:track:" + np.id, np.title); };
+  $("pvLike").onclick = () => { if (np) toggleLike("spotify:track:" + np.id, np.title); };
+
   function rowEl(t, rel, onPick, from) {
     const r = document.createElement("div"); r.className = "row";
     const m = rel && rel[t.key] && state.on[rel[t.key]] ? MOVE_NAME[rel[t.key]] : "";
@@ -269,12 +307,12 @@
     const relLine = (m || pc) ? `<div class="rel">${m}${dTxt}${pc ? `<span class="mem">${m ? " · " : ""}★ played after this${pc > 1 ? " " + pc + "×" : ""}</span>` : ""}</div>` : "";
     const keyHtml = t.key ? `<span class="key" style="background:${col(parseInt(t.key))}">${t.key}</span>` : `<span class="key none">?</span>`;
     r.innerHTML = `<span class="art" data-aid="${esc(t.id)}"></span>
-      <span class="tt" role="button" tabindex="0">${relLine}<div>${esc(t.title)}${noteOf(t.id) ? ' <span class="hasnote" title="Has a note">✎</span>' : ""}</div><div class="a">${esc(t.artist)}</div></span>
+      <span class="tt" role="button" tabindex="0">${relLine}<div>${esc(t.title)}${noteOf(t.id) ? ' <span class="hasnote" title="Has a note">✎</span>' : ""}</div><div class="a"><span class="lk${liked.get("spotify:track:" + t.id) === true ? " on" : ""}" data-lk="spotify:track:${esc(t.id)}"></span>${esc(t.artist)}</div></span>
       <span class="meta"><span class="bpm">${t.tempo || "–"}</span>${keyHtml}</span>
       <button class="play" type="button" aria-label="Play in Spotify">${IC.play}</button>
       <button class="add${crate.includes(t.id) ? " in" : ""}" type="button" aria-label="Add to crate">${crate.includes(t.id) ? "✓" : "+"}</button>
       <button class="more-btn" type="button" aria-label="More options">⋯</button>`;
-    r._track = t;
+    r._track = t; likeCheck("spotify:track:" + t.id);
     { const a = r.querySelector(".art"); if (art[t.id]) paintArt(a, t.id); else if (t.art) { noteArt(t.id, t.art); paintArt(a, t.id); } else if (artObs) artObs.observe(a); }
     r.querySelector(".more-btn").onclick = () => openMenu(t);
     if (np && np.id === t.id) r.classList.add("now");
@@ -553,7 +591,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.5";
+  const APP_VERSION = "2.6";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -869,6 +907,7 @@
     $("npPP").innerHTML = IC.reconnect; $("npPP").onclick = () => Spotify.login().catch(err => toast(err.message));
   }
   function paintNp() {
+    paintLikeBtns();
     if (!np || np.none) { npBar.hidden = true; document.body.classList.remove("has-np"); return; }
     npBar.hidden = false; document.body.classList.add("has-np");
     const rec = byId.get(np.id);
@@ -1301,6 +1340,7 @@
       <button class="item" data-a="mix" type="button" ${t.key ? "" : "disabled"}><span>${IC.mix}</span>Mix out of this</button>
       <button class="item" data-a="artist" type="button"><span>${IC.artist}</span>Go to artist</button>
       <button class="item" data-a="album" type="button"><span>${IC.album}</span>Go to album</button>
+      <button class="item" data-a="like" type="button"><span>${liked.get("spotify:track:" + t.id) ? IC.liked : IC.likeAdd}</span>${liked.get("spotify:track:" + t.id) ? "Remove from Liked Songs" : "Add to Liked Songs"}</button>
       <button class="item" data-a="open" type="button"><span>${IC.open}</span>Open in Spotify</button>`;
     sh.hidden = false; $("sheetBg").hidden = false;
     const act = a => sh.querySelector(`[data-a="${a}"]`);
@@ -1309,6 +1349,7 @@
     act("crate").onclick = () => { closeMenu(); const inn = toggleCrate(t.id); toast(inn ? "Added to crate" : "Removed from crate"); render(); if (!$("view-crate").hidden) paintCrate(); };
     act("mix").onclick = () => { closeMenu(); setAnchor(t); };
     act("note").onclick = () => editNote(t);
+    act("like").onclick = () => { closeMenu(); toggleLike("spotify:track:" + t.id, t.title); };
     act("open").onclick = () => { closeMenu(); location.href = "https://open.spotify.com/track/" + t.id; };
     const needSpotify = () => { if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return false; } return true; };
     act("album").onclick = async () => {
@@ -1391,7 +1432,9 @@
         w.innerHTML = `<div class="bhead"><div class="bimg" style="background-image:url('${esc(a.image)}')"></div><div><div class="bt">${esc(a.name)}</div>
           <div class="bs">${a.artists.map(x => `<a href="#" data-artist="${esc(x.id)}" style="color:inherit">${esc(x.name)}</a>`).join(", ")}${a.year ? " · " + a.year : ""} · ${a.total && a.total > a.tracks.length ? `showing ${a.tracks.length} of ${a.total} tracks` : a.tracks.length + " tracks"}</div>
           <div class="bs">${known} with a key in your library</div></div></div>
-          <div class="crate-actions"><button class="btn" type="button" id="bPlay">${IC.play}Play all ${a.tracks.length}</button><button class="btn" type="button" id="bShuf">${IC.shuffle}Shuffle all</button><button class="btn ghost" type="button" id="bAllQ">Queue all</button><a class="btn ghost" href="https://open.spotify.com/album/${esc(a.id)}">Open in Spotify</a></div>`;
+          <div class="crate-actions"><button class="btn" type="button" id="bPlay">${IC.play}Play all ${a.tracks.length}</button><button class="btn" type="button" id="bShuf">${IC.shuffle}Shuffle all</button><button class="btn ghost" type="button" id="bAllQ">Queue all</button><button class="btn ghost albumlike${liked.get("spotify:album:" + a.id) ? " on" : ""}" type="button" id="bLike" data-lk="spotify:album:${esc(a.id)}">${liked.get("spotify:album:" + a.id) ? IC.liked + "Saved" : IC.likeAdd + "Save album"}</button><a class="btn ghost" href="https://open.spotify.com/album/${esc(a.id)}">Open in Spotify</a></div>`;
+        likeCheck("spotify:album:" + a.id);
+        $("bLike").onclick = () => toggleLike("spotify:album:" + a.id, a.name);
         w.querySelectorAll("[data-artist]").forEach(el => el.onclick = e => { e.preventDefault(); openArtist(el.dataset.artist); });
         const list = document.createElement("div"); list.className = "list";
         a.tracks.forEach(t => list.appendChild(rowEl(recOf(t.id, t), null, setAnchor)));

@@ -490,3 +490,14 @@ pre.conn{white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--mono);fon
 .row .meta{display:grid;justify-items:center;gap:3px}
 .row .meta .bpm{font-size:11px;color:var(--muted);line-height:1}
 .row .meta .key{width:40px}
+/* liked */
+.row .tt .a .lk{display:none}
+.row .tt .a .lk.on{display:inline-grid;place-items:center;width:13px;height:13px;border-radius:50%;background:#1ed760;margin-right:5px;vertical-align:-1px}
+.row .tt .a .lk.on::after{content:"";width:6px;height:3px;border:solid #000;border-width:0 0 1.6px 1.6px;transform:rotate(-45deg) translate(1px,-1px)}
+.chip.like{padding:4px 8px;display:inline-grid;place-items:center}
+.chip.like .ico,.pvlike .ico{width:20px;height:20px;display:block;fill:none;stroke:currentColor;stroke-width:1.8}
+.chip.like.on .ico,.pvlike.on .ico{stroke:none}
+.pvlike{background:none;border:0;color:var(--muted);cursor:pointer;padding:6px;margin:2px auto 0;display:block}
+.albumlike .ico{display:inline-block;width:16px;height:16px;margin-right:6px;vertical-align:-3px;fill:none;stroke:currentColor;stroke-width:1.8}
+.albumlike.on .ico{stroke:none}
+#sheet .item span .ico{fill:none;stroke:currentColor}

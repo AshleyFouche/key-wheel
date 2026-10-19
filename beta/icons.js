@@ -2,6 +2,8 @@
 (function () {
   const s = (body, fill) => `<svg class="ico${fill ? " fill" : ""}" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
   window.IC = {
+    likeAdd: s('<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>'),
+    liked: s('<circle cx="12" cy="12" r="10" fill="#1ed760"/><path d="M7.5 12.3l3 3 6-6.4" fill="none" stroke="#000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'),
     shuffle: s('<path d="M4 7h3.5c1.6 0 3 .8 3.9 2.1l2.2 3.3c.9 1.3 2.3 2.1 3.9 2.1H20"/><path d="M4 17h3.5c1.2 0 2.3-.5 3.1-1.3M13.4 8.3c.8-.8 1.9-1.3 3.1-1.3H20"/><path d="M17.5 4.5 20 7l-2.5 2.5M17.5 12 20 14.5 17.5 17"/>'),
     play: s('<path d="M8 5.6v12.8c0 .8.9 1.3 1.6.9l10-6.4c.6-.4.6-1.4 0-1.8l-10-6.4C8.9 4.3 8 4.8 8 5.6z"/>', 1),
     pause: s('<rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/>', 1),

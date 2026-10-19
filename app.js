@@ -629,32 +629,43 @@
   function loadUpNext() { paintQueue(); }
 
   // ---------- swipe right to queue ----------
+  // iPhone needs touch events (with preventDefault once a sideways swipe is detected); mouse uses pointer events.
   let suppressTap = 0;
   (function enableSwipe() {
-    let row = null, x0 = 0, y0 = 0, dx = 0, mode = null, pid = null;
-    document.addEventListener("pointerdown", e => {
-      if (e.pointerType === "mouse" && e.button !== 0) return;
-      const r = e.target.closest(".row"); if (!r || r.classList.contains("noswipe") || !r._track) return;
-      if (e.target.closest("button,.drag,a,input")) return;
-      row = r; x0 = e.clientX; y0 = e.clientY; dx = 0; mode = null; pid = e.pointerId;
-    }, { passive: true });
-    document.addEventListener("pointermove", e => {
-      if (!row || e.pointerId !== pid) return;
-      const ddx = e.clientX - x0, ddy = e.clientY - y0;
-      if (!mode) { if (Math.abs(ddx) > 10 && Math.abs(ddx) > Math.abs(ddy) * 1.2 && ddx > 0) mode = "swipe"; else if (Math.abs(ddy) > 10) { row = null; return; } }
-      if (mode === "swipe") { dx = Math.max(0, Math.min(140, ddx)); row.classList.add("swiping"); row.style.transform = `translateX(${dx}px)`; }
-    }, { passive: true });
-    const end = () => {
+    let row = null, x0 = 0, y0 = 0, dx = 0, mode = null;
+    const startAt = (target, x, y) => {
+      const r = target.closest(".row");
+      if (!r || r.classList.contains("noswipe") || !r._track || target.closest("button,.drag,a,input")) return false;
+      row = r; x0 = x; y0 = y; dx = 0; mode = null; return true;
+    };
+    const moveTo = (x, y, ev) => {
+      if (!row) return;
+      const ddx = x - x0, ddy = y - y0;
+      if (!mode) {
+        if (Math.abs(ddx) > 8 && Math.abs(ddx) > Math.abs(ddy) && ddx > 0) mode = "swipe";
+        else if (Math.abs(ddy) > 8 || ddx < -8) { row = null; return; }
+        else return;
+      }
+      if (ev && ev.cancelable) ev.preventDefault();          // stop the page scrolling sideways or vertically mid-swipe
+      dx = Math.max(0, Math.min(140, ddx));
+      row.classList.add("swiping"); row.style.transform = `translateX(${dx}px)`;
+    };
+    const finish = () => {
       if (!row) return;
       const r = row; row = null;
-      if (mode === "swipe") {
-        suppressTap = Date.now() + 350;
-        r.classList.remove("swiping");
-        if (dx > 70) { r.classList.add("swiped"); enqueue(r._track); setTimeout(() => r.classList.remove("swiped"), 450); }
-        r.style.transform = "";
-      }
+      if (mode !== "swipe") return;
+      suppressTap = Date.now() + 400;
+      r.classList.remove("swiping"); r.style.transform = "";
+      if (dx > 60) { r.classList.add("swiped"); enqueue(r._track); setTimeout(() => r.classList.remove("swiped"), 450); }
     };
-    document.addEventListener("pointerup", end); document.addEventListener("pointercancel", end);
+    // touch (iPhone)
+    document.addEventListener("touchstart", e => { if (e.touches.length === 1) startAt(e.target, e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+    document.addEventListener("touchmove", e => { if (row && e.touches.length === 1) moveTo(e.touches[0].clientX, e.touches[0].clientY, e); }, { passive: false });
+    document.addEventListener("touchend", finish); document.addEventListener("touchcancel", finish);
+    // mouse (desktop)
+    document.addEventListener("pointerdown", e => { if (e.pointerType === "mouse" && e.button === 0) startAt(e.target, e.clientX, e.clientY); });
+    document.addEventListener("pointermove", e => { if (e.pointerType === "mouse") moveTo(e.clientX, e.clientY, null); });
+    document.addEventListener("pointerup", e => { if (e.pointerType === "mouse") finish(); });
   })();
 
   // ---------- track menu ----------

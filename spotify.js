@@ -222,9 +222,15 @@
     };
   }
   async function getArtist(id) {
-    const [a, al] = await Promise.all([api("/artists/" + id), api(`/artists/${id}/albums?include_groups=album,single,compilation&limit=50`)]);
+    const a = await api("/artists/" + id);
+    // Spotify now rejects large page sizes here, so fetch 10 at a time (up to 50 releases).
+    let items = [], next = `/artists/${id}/albums?include_groups=album,single,compilation&limit=10`;
+    for (let i = 0; next && i < 5; i++) {
+      try { const j = await api(next); items = items.concat(j.items || []); next = j.next; }
+      catch (e) { if (!items.length && /limit/i.test(e.message)) { next = `/artists/${id}/albums?include_groups=album,single,compilation`; continue; } break; }
+    }
     const seen = new Set();
-    const albums = (al.items || []).filter(x => { const k = (x.name || "").toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+    const albums = items.filter(x => { const k = (x.name || "").toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
       .map(x => ({ id: x.id, name: x.name, image: img(x.images), year: (x.release_date || "").slice(0, 4), type: x.album_type }));
     return { id: a.id, name: a.name, image: img(a.images), genres: a.genres || [], albums };
   }

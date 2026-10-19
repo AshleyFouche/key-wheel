@@ -1,12 +1,12 @@
 // Offline support: app files are cached; the library is fetched fresh when online and served from cache when not.
-const CACHE = "key-wheel-v48";
+const CACHE = "key-wheel-v49";
 const SHELL = ["./", "index.html", "app.css", "app.js", "spotify.js", "icons.js", "config.js", "library.json", "manifest.webmanifest", "icons/icon-192.png", "icons/apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 self.addEventListener("activate", e => {
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k.startsWith("key-wheel-v")).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);

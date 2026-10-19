@@ -512,7 +512,7 @@
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
   const APP_VERSION = "1.24";
-  $("appVer").textContent = "beta " + APP_VERSION;
+  $("appVer").textContent = "stable " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
   let sTimer = 0, sSeq = 0, sState = { q: "", items: [], offset: 0, next: false, total: 0, err: "" };

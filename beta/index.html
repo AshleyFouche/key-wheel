@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ASH//FLOW β</title>
+<meta name="description" content="ASH//FLOW: browse your crates by key, follow the flow, and turn listening sessions into Spotify playlists.">
+<meta name="theme-color" content="#121014">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FLOW β">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">ASH//<span class="fl">FLOW</span><span class="ver" id="appVer"></span></div>
+  <button class="pill" id="spotifyBtn" type="button">Connect Spotify</button>
+</header>
+
+<main>
+  <!-- WHEEL -->
+  <section class="view" id="view-wheel">
+    <div class="anchor" id="anchor"></div>
+    <svg class="wheel" id="wheel" viewBox="0 0 520 520" role="group" aria-label="Camelot key wheel"></svg>
+    <div class="dir" id="dir" role="group" aria-label="Set direction"></div>
+    <div class="moves" id="moves"></div>
+    <div class="filters">
+      <input id="q" type="search" placeholder="Search any track or artist" aria-label="Search any track or artist" autocomplete="off">
+      <div class="frow">
+        <label>BPM <input id="tmin" type="number" inputmode="numeric" aria-label="Lowest BPM"> to <input id="tmax" type="number" inputmode="numeric" aria-label="Highest BPM"></label>
+        <select id="crate" aria-label="Crate"><option value="">All crates</option></select>
+      </div>
+    </div>
+    <div class="count" id="count"></div>
+    <div class="list" id="list"></div>
+    <button class="btn ghost more" id="more" type="button" hidden>Show more</button>
+  </section>
+
+  <!-- PLAYING -->
+  <section class="view" id="view-playing" hidden>
+    <div id="pvEmpty" class="note">Nothing playing in Spotify right now. Tap ▶ on any track, or start something in Spotify.</div>
+    <div id="pv" hidden>
+      <div class="pv-art" id="pvArt"></div>
+      <div class="pv-meta">
+        <div class="pv-t" id="pvTitle"></div>
+        <div class="pv-a" id="pvArtist"></div>
+        <div class="pv-k" id="pvKey"></div>
+        <div id="pvWhere"></div>
+      </div>
+      <div class="pv-prog">
+        <input type="range" id="pvSeek" min="0" max="1000" value="0" step="1" aria-label="Track position">
+        <div class="pv-times"><span id="pvPos">0:00</span><span id="pvDev"></span><span id="pvLeft">-0:00</span></div>
+      </div>
+      <div class="pv-ctrl">
+        <button type="button" id="pvPrev" aria-label="Previous track"></button>
+        <button type="button" id="pvPP" class="big" aria-label="Play or pause"></button>
+        <button type="button" id="pvNext" aria-label="Next track"></button>
+      </div>
+      <div class="pv-vol" id="pvVolRow">
+        <span class="vi" id="pvVolIco"></span>
+        <input type="range" id="pvVol" min="0" max="100" step="1" value="50" aria-label="Volume">
+        <span class="vp" id="pvVolPct">–</span>
+      </div>
+      <button class="devbtn" id="pvDevice" type="button"><span class="dico" id="pvDevIco"></span><span><small>Playing on</small><b id="pvDevName">—</b></span><span class="chev" id="pvChev"></span></button>
+      <button class="btn" id="pvMix" type="button">Mix out of this</button>
+      <div class="qhead"><h2>Suggested next</h2><label class="htog" title="If nothing is queued, the top suggestion queues itself 8 seconds before the track ends"><input type="checkbox" id="autoTog2"> Auto-pick</label></div>
+      <p class="note" id="sugNote">Best matches from what's playing, by key and BPM. Swipe right to queue.</p>
+      <div class="list" id="pvSuggest"></div>
+      <div class="qhead"><h2>Up next</h2><button class="btn ghost danger" id="qClear" type="button" hidden>Clear queue</button></div>
+      <p class="note">Swipe right on any track to queue it. Drag <b>≡</b> to reorder, tap <b>✕</b> to remove. Each label shows how the track mixes from the one before it.</p>
+      <div class="list" id="pvQueue"></div>
+    </div>
+  </section>
+
+  <!-- HISTORY -->
+  <section class="view" id="view-history" hidden>
+    <h2>Flows</h2>
+    <p class="note">Everything you play, grouped into flows. An hour's break starts a new one.</p>
+    <div id="histWrap"></div>
+  </section>
+
+  <!-- BROWSE (artist / album) -->
+  <section class="view" id="view-browse" hidden>
+    <button class="btn ghost back" id="browseBack" type="button">‹ Back</button>
+    <div id="browseWrap"></div>
+  </section>
+
+  <!-- MATCH REVIEW -->
+  <section class="view" id="view-match" hidden>
+    <button class="btn ghost back" id="matchBack" type="button">‹ Back</button>
+    <h2>Check the matches</h2>
+    <p class="note" id="matchInfo"></p>
+    <div id="matchList" class="mlist"></div>
+    <div class="save">
+      <button class="btn" id="matchSave" type="button">Save ticked tracks</button>
+      <p class="status" id="matchStatus" role="status"></p>
+    </div>
+  </section>
+
+  <!-- CRATE -->
+  <section class="view" id="view-crate" hidden>
+    <h2>Crate in progress</h2>
+    <p class="note">Tap <b>+</b> on tracks to add them. Drag <b>≡</b> to reorder, then save to Spotify.</p>
+    <div class="crate-actions">
+      <button class="btn ghost" id="fromPath" type="button">Add my thread</button>
+      <button class="btn ghost" id="fromList" type="button">Add current list</button>
+      <button class="btn ghost danger" id="clearCrate" type="button">Clear</button>
+    </div>
+    <div class="count" id="crateCount"></div>
+    <div class="list" id="crateList"></div>
+    <div class="save">
+      <div class="seg2" role="radiogroup" aria-label="Where to save">
+        <label><input type="radio" name="dest" value="new" checked> New playlist</label>
+        <label><input type="radio" name="dest" value="existing"> Add to existing</label>
+      </div>
+      <div id="destNew">
+        <label for="crateName">Playlist name</label>
+        <input id="crateName" type="text" placeholder="ASH//FLOW · Techno · 128–132">
+      </div>
+      <div id="destExisting" hidden>
+        <label for="existingPl">Your playlist</label>
+        <select id="existingPl"><option value="">Loading your playlists…</option></select>
+        <p class="note">Tracks already in that playlist are skipped, so nothing is doubled up.</p>
+      </div>
+      <label class="check"><input id="crateOrder" type="checkbox"> Sort by BPM before saving</label>
+      <button class="btn" id="saveCrate" type="button">Save to Spotify</button>
+      <p class="status" id="saveStatus" role="status"></p>
+    </div>
+  </section>
+
+  <!-- PLAYLISTS -->
+  <!-- SEARCH -->
+  <section class="view" id="view-search" hidden>
+    <h2>Search Spotify</h2>
+    <input id="sq" type="search" placeholder="Any song or artist on Spotify" aria-label="Search Spotify" autocomplete="off" enterkeyhint="search">
+    <div id="sOut"></div>
+  </section>
+
+  <section class="view" id="view-playlists" hidden>
+    <h2>Your Spotify playlists</h2>
+    <div id="plWrap"></div>
+  </section>
+
+  <!-- INFO -->
+  <section class="view guide" id="view-info" hidden>
+    <button class="btn ghost back" id="infoBack" type="button">‹ More</button>
+    <h2>How ASH//FLOW works</h2>
+    <p class="note">ASH//FLOW helps you find tracks that mix well together, play them through Spotify, and turn a night of listening into a playlist.</p>
+
+    <details open><summary>The Camelot wheel explained</summary>
+      <p class="gp">The wheel is a map of musical keys arranged so that keys which sound good together sit next to each other. DJ Mark Davis created it as a simpler way to use the musicians' "circle of fifths", and Mixed In Key popularised it. Spotify's Mix view, Rekordbox and most DJ software use the same codes.</p>
+      <h3>The numbers: 1 to 12 around the clock</h3>
+      <p class="gp">There are 12 notes in music, so there are 12 positions. Each step clockwise moves the key up by a "fifth", the most natural-sounding move in music. Neighbouring numbers share 6 of their 7 notes, which is why they blend smoothly. Numbers wrap around: 12 sits next to 1.</p>
+      <h3>The letters: A and B</h3>
+      <ul>
+        <li><b>A = minor</b>: darker, moodier, more tension. The inner ring.</li>
+        <li><b>B = major</b>: brighter, happier, more open. The outer ring.</li>
+        <li>The same number in A and B (like 8A, A minor, and 8B, C major) uses exactly the same 7 notes, just centred differently. That's why the mood switch works.</li>
+      </ul>
+      <h3>The colours</h3>
+      <p class="gp">The colour only tells you the <b>number</b>. Each number has its own colour, arranged in rainbow order around the wheel, so neighbouring numbers have neighbouring colours. 8A and 8B share a colour. Colours that sit close together on the wheel usually mix well; colours from opposite sides usually clash.</p>
+      <div class="swatches" id="swatches"></div>
+      <p class="gp">These are ASH//FLOW's colours. Spotify's Mix view and other apps use their own colour sets, so the same key can be a different colour there. The code (like 7B) is what matters, not the colour.</p>
+      <h3>What the wheel shows you</h3>
+      <ul>
+        <li><b>White outline</b>: the key you've selected, or the key of the track you're mixing out of.</li>
+        <li><b>Bright colours</b>: keys that mix well with it, using the moves you have switched on.</li>
+        <li><b>Dark grey</b>: keys that don't fit. Mixing into these will usually clash.</li>
+        <li>The small number under each key (like <b>Am · 188</b>) is the key's name and how many of your tracks are in it.</li>
+        <li>Tap the centre to show every track again.</li>
+      </ul>
+      <h3>The moves, safest first</h3>
+      <div class="movetab">
+        <div><b>Same key</b><span>8A → 8A</span><small>All 7 notes shared. Always works.</small></div>
+        <div><b>One step</b><span>8A → 7A or 9A</span><small>6 of 7 notes shared. Smooth; +1 lifts slightly, −1 settles.</small></div>
+        <div><b>Mood switch</b><span>8A → 8B</span><small>All 7 notes shared, new centre. Minor to major brightens; major to minor darkens.</small></div>
+        <div><b>Diagonal</b><span>8A → 9B, 8B → 7A</span><small>6 of 7 notes shared, plus a mood change. Colourful but still works.</small></div>
+        <div><b>Energy boost</b><span>8A → 10A</span><small>5 of 7 notes shared. Raises the key a whole step for a noticeable lift. Use sparingly, ideally on a clean break.</small></div>
+      </div>
+      <h3>Labels you'll see in lists</h3>
+      <ul>
+        <li>Pink capitals above a track (like <b>ONE STEP</b>) tell you which move gets you there from the track you're mixing out of.</li>
+        <li><b>Key clash</b> in amber, in your queue, means that transition breaks the rules. It might still work over a drum break, but listen first.</li>
+        <li><b>?</b> means the track has no key in your library yet.</li>
+        <li><b class="gmem">★ Played after this</b> in green means you've gone from the track you're mixing out of into that one before, in a flow or a crate you saved. Those float to the top.</li>
+        <li><b>Live set:</b> when you play a track, Spotify plays from a private playlist called <b>ASH//FLOW Live</b>. Everything after the playing track is your queue, so you can play something next, reorder or remove tracks, and nothing gets skipped. Turn it off on the More tab.</li>
+        <li><b>✎</b> next to a title means you've left yourself a note on it. Add one from the <b>⋯</b> menu.</li>
+      </ul>
+      <h3>Direction</h3>
+      <p>The <b>Direction</b> switch under the wheel tells the app where you want the night to go. <b>Build</b> favours a few BPM up, energy boosts and minor to major. <b>Hold</b> keeps BPM and key close. <b>Cool</b> favours BPM down and major to minor, and avoids boosts. <b>Any</b> just ranks by closest key and BPM. It only changes the <b>order</b> of the wheel list and the suggestions on the Playing tab, never how many tracks you see. It works from the track you're mixing out of, and each row shows the BPM change from it (like <b>+3</b>). Each flow on the Flows tab has a BPM chart so you can see the shape of the night afterwards.</p>
+      <p class="gp">The wheel narrows the options. BPM, energy, vocals and phrasing still decide whether a blend works, so trust your ears over the colours.</p>
+    </details>
+
+    <details><summary>Getting started</summary>
+      <ul>
+        <li>Open the app from its home-screen icon. To install it again: open <b>ashleyfouche.github.io/key-wheel</b> in Safari, tap <b>Share → Add to Home Screen</b>.</li>
+        <li>Tap <b>Connect Spotify</b> (top right) and approve. Playback needs Spotify Premium.</li>
+        <li>If a bar says <b>Reconnect Spotify</b>, tap it once. That happens when a new feature needs an extra permission.</li>
+      </ul>
+    </details>
+
+    <details><summary>The wheel and keys</summary>
+      <ul>
+        <li>Every key has a number from 1 to 12 and a letter. <b>A</b> is minor (darker), <b>B</b> is major (brighter). The outer ring is B, the inner ring is A.</li>
+        <li>Tap a key to see the keys that mix well with it and your tracks in them. Tap the centre to go back to all tracks.</li>
+        <li><b>Same key</b>: the safest blend. <b>One step</b>: one number up or down, same letter. <b>Mood switch</b>: same number, other letter (lifts or darkens). <b>Energy boost</b>: two numbers up, use sparingly. <b>Diagonal</b>: minor one up to major, or major one down to minor.</li>
+        <li>Tap a move button to show only that move. Tap it again to show every move.</li>
+        <li>Search always looks through every track, whatever key is selected.</li>
+      </ul>
+    </details>
+
+    <details><summary>Your thread</summary>
+      <ul>
+        <li>Tap a track's name to mix out of it. The wheel jumps to its key, the BPM filter sets to 6 either side, and the list shows what fits.</li>
+        <li>Keep tapping tracks to build your <b>thread</b>, the chain of tracks you've moved through.</li>
+        <li><b>‹ Back one</b> steps back a track. Tap any track in the thread to jump back to it. <b>Clear thread</b> starts again.</li>
+        <li><b>Save thread as crate</b> puts the whole thread into your crate in order.</li>
+      </ul>
+    </details>
+
+    <details><summary>Playing through Spotify</summary>
+      <ul>
+        <li><b>▶</b> plays a track straight away. <b>+</b> adds it to your crate. <b>⋯</b> opens more options: queue, mix out of it, go to the artist or album, or open it in Spotify.</li>
+        <li><b>Swipe right</b> on any track to add it to your queue.</li>
+        <li>Your queue lives in ASH//FLOW, so you can reorder it and remove tracks, which Spotify doesn't let other apps do. The app hands Spotify one track at a time, so keep ASH//FLOW open while you play. The next track (marked "Sent to Spotify") can't be removed.</li>
+        <li>Music plays on whichever device Spotify is using: your phone, a speaker, AirPods or your laptop. Spotify needs to be open, or recently used, somewhere.</li>
+        <li>The bar at the bottom shows what's playing, with its key. <b>Mix out of this</b> makes it your starting track.</li>
+        <li><b>Follow</b>: every new track Spotify plays becomes the track you mix out of and joins your thread automatically.</li>
+        <li>The <b>Playing</b> tab shows large artwork, a progress bar you can drag, skip buttons, and <b>Up next</b>, your queue, labelled with how each track mixes from the one before. A clash shows as <b>Key clash</b>.</li>
+        <li>Tap an artist or album from the <b>⋯</b> menu to see their tracks and releases, with keys from your library where you have them.</li>
+      </ul>
+    </details>
+
+    <details><summary>Flows</summary>
+      <ul>
+        <li>Every track that plays for 30 seconds or more is saved, whether you started it here or in Spotify. Quick skips are left out.</li>
+        <li>Plays are grouped into <b>flows</b>. A break of more than an hour starts a new one.</li>
+        <li>Opening the app also collects your last 50 plays from Spotify, so tracks played while the app was closed still appear.</li>
+        <li><b>Use as crate</b> starts a fresh crate from a flow. <b>Add to crate</b> adds a flow after what's already there, skipping repeats, so you can combine nights.</li>
+      </ul>
+    </details>
+
+    <details><summary>Crates and saving to Spotify</summary>
+      <ul>
+        <li>Add tracks with <b>+</b>, your thread, a flow, or the current list.</li>
+        <li>Drag the <b>≡</b> handle to change the order. Tick <b>Sort by BPM</b> to order by BPM when saving.</li>
+        <li><b>New playlist</b> creates a private Spotify playlist. <b>Add to existing</b> adds to one of your playlists and skips tracks already in it.</li>
+        <li>Spotify doesn't let apps move playlists into folders, so drag them into a folder in Spotify yourself.</li>
+      </ul>
+    </details>
+
+    <details><summary>Your playlists</summary>
+      <ul>
+        <li>The <b>Playlists</b> tab shows playlists you own, with keys from your library. Spotify only shares the tracks of playlists you own, so copy anything else into one of yours first.</li>
+        <li>Tracks marked <b>?</b> don't have a key in your library yet.</li>
+      </ul>
+    </details>
+
+    <details><summary>Adding keys for new tracks</summary>
+      <ol>
+        <li>Put the new tracks in one of your own Spotify playlists, open it on your phone and tap <b>Mix</b> so keys and BPMs show.</li>
+        <li>Screenshot the list as you scroll and send the screenshots to Claude.</li>
+        <li>Claude replies with lines like <code>7B | 130 | Positive | Jamback | 2:49</code>. Copy them.</li>
+        <li>Open that playlist in the <b>Playlists</b> tab, tap <b>Add keys</b>, paste and tap <b>Match</b>. ASH//FLOW pairs each line with the exact track in the playlist. Anything it can't find there, it searches Spotify for, using the length to pick the right version.</li>
+        <li>Check the list: <b>✓</b> is a confident match, <b>⚠</b> needs a look (unticked until you tick it), <b>✕</b> wasn't found. Tap <b>Save ticked tracks</b>.</li>
+        <li>For tracks that aren't in a playlist, paste into <b>More → Add tracks</b> instead.</li>
+      </ol>
+    </details>
+
+    <details><summary>Good to know</summary>
+      <ul>
+        <li>Your crate, flows and added tracks are stored on this phone. Use <b>More → Back up my data</b> now and then, especially before changing phones.</li>
+        <li>Spotify asks you to log in again about every six months.</li>
+        <li>The wheel and your library work offline. Playing and saving need a connection.</li>
+        <li>Keys come from Spotify's Mix view, so a few may be off by a step. The rules narrow the options; your ears decide the blend.</li>
+      </ul>
+    </details>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view" id="view-more" hidden>
+    <button class="infolink" id="openInfo" type="button"><span><b>How ASH//FLOW works</b><small>Every feature explained</small></span><span aria-hidden="true">›</span></button>
+    <h2>Library</h2>
+    <p class="note" id="libInfo"></p>
+    <div class="crate-actions">
+      <button class="btn ghost" id="backup" type="button">Back up my data</button>
+      <label class="btn ghost filebtn">Restore backup<input id="restore" type="file" accept="application/json,.json" hidden></label>
+    </div>
+    <h2>Add tracks</h2>
+    <p class="note">Best route: open the playlist in the <b>Playlists</b> tab and use <b>Add keys</b> there. Use this box for tracks that aren't in one of your playlists; ASH//FLOW searches Spotify to find them. One track per line: <code>key | BPM | title | artist | length</code>.</p>
+    <textarea id="paste" rows="6" placeholder="7B | 130 | Positive | Jamback | 2:49"></textarea>
+    <button class="btn" id="addPaste" type="button">Find tracks</button>
+    <p class="status" id="pasteStatus" role="status"></p>
+    <h2>Spotify</h2>
+    <p class="note" id="spInfo"></p>
+    <p class="note">This is the <b>beta</b>. New features land here first. It keeps its own crate, notes, flows and Live set, separate from your stable ASH//FLOW.</p>
+    <div class="crate-actions"><button class="btn ghost" id="fromStable" type="button">Copy my data from stable</button></div>
+    <label class="check"><input id="liveTog" type="checkbox"> <span><b>Live set</b> (recommended). Spotify plays from a private playlist called “ASH//FLOW Live” that the app edits as you queue, so tracks can be played next, moved or removed without skipping.</span></label>
+    <div class="crate-actions"><button class="btn" id="connCheck" type="button">Connection check</button><button class="btn ghost" id="logout" type="button">Disconnect Spotify</button></div>
+    <div id="connOut" hidden></div>
+    <h2>About the keys</h2>
+    <p class="note">Keys and BPMs come from Spotify's Mix view. A is minor, B is major. Same key, one step, mood switch (same number, other letter), energy boost (+2) and diagonal moves all mix cleanly. The rules narrow the field; your ears decide the blend.</p>
+  </section>
+</main>
+
+<div class="np" id="np" hidden>
+  <div class="np-heads" id="npHeads" hidden></div>
+  <div class="np-main">
+    <span class="np-art" id="npArt"></span>
+    <div class="np-text"><div class="np-t" id="npTitle"></div><div class="np-a" id="npSub"></div></div>
+    <button class="np-vol" id="npVolBtn" type="button" aria-label="Volume"></button>
+    <button class="np-pp" id="npPP" type="button" aria-label="Play or pause"></button>
+  </div>
+  <div class="np-volrow" id="npVolRow" hidden>
+    <button class="vstep" id="npVolDown" type="button" aria-label="Volume down">−</button>
+    <input type="range" id="npVol" min="0" max="100" step="1" value="50" aria-label="Volume">
+    <button class="vstep" id="npVolUp" type="button" aria-label="Volume up">+</button>
+    <span class="vp" id="npVolPct">–</span>
+  </div>
+  <div class="np-acts">
+    <button class="chip" id="npMix" type="button">Mix out of this</button>
+    <button class="chip" id="npQueue" type="button">Queue · 0</button>
+    <button class="chip" id="npFollow" type="button" aria-pressed="false">Follow</button>
+  </div>
+</div>
+<nav class="tabs" aria-label="Sections">
+  <button data-view="playing" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l5.5-3.5z"/></svg>Playing</button>
+  <button data-view="wheel" class="on" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>Wheel</button>
+  <button data-view="history" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/><path d="M12 8v4l3 2"/></svg>Flows</button>
+  <button data-view="crate" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="16" height="13" rx="2"/><path d="M8 7V4h8v3"/></svg>Crate <span class="badge" id="crateBadge" hidden></span></button>
+  <button data-view="search" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>Search</button>
+  <button data-view="playlists" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h12M4 11h12M4 16h7"/><circle cx="18" cy="17" r="2.5"/><path d="M20.5 17V7"/></svg>Playlists</button>
+  <button data-view="more" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>More</button>
+</nav>
+<div class="toast" id="toast" role="status" hidden></div>
+<div class="sheet-bg" id="sheetBg" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Track options" hidden></div>
+
+<script src="icons.js"></script>
+<script src="config.js"></script>
+<script src="spotify.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

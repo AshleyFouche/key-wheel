@@ -460,3 +460,8 @@ body.has-np.has-heads{padding-bottom:calc(var(--tabs-h) + env(safe-area-inset-bo
 #view-search .shead{margin:14px 0 4px}
 .nokey{color:var(--muted);font-size:12px}
 .smore{margin:12px auto 0;display:block}
+.onlyline{margin-top:4px;color:var(--warn);font-size:13px}
+.onlyline .link{margin-left:6px}
+.empty{padding:16px 0;display:grid;gap:10px}
+.empty .acts{display:flex;gap:8px;flex-wrap:wrap}
+.dir{margin-bottom:6px}

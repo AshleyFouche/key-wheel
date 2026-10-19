@@ -250,12 +250,30 @@
     const { rows, rel, keyed, qq } = filtered();
     currentRows = rows;
     const dd = DIRS.find(d => d.id === state.dir);
-    $("count").textContent = `${rows.length.toLocaleString()} ${keyed ? "tracks in compatible keys" : (qq ? "tracks across your whole library" : "tracks, all keys")}` +
-      (keyed && state.anchor && state.dir !== "any" ? ` · ${dd.sym} ${dd.name} order: ${{ build: "tempo up, boosts, minor to major first", hold: "same tempo, same or next-door key first", cool: "tempo down, major to minor first" }[state.dir]}` : "");
+    const offMoves = keyed ? MOVES.filter(m => !state.on[m.id]) : [];
+    const onlyNames = MOVES.filter(m => state.on[m.id]).map(m => m.name).join(" + ");
+    $("count").innerHTML = esc(`${rows.length.toLocaleString()} ${keyed ? "tracks in compatible keys" : (qq ? "tracks across your whole library" : "tracks, all keys")}` +
+      (keyed && state.anchor && state.dir !== "any" ? ` · ${dd.sym} ${dd.name} order: ${{ build: "tempo up, boosts, minor to major first", hold: "same tempo, same or next-door key first", cool: "tempo down, major to minor first" }[state.dir]}` : "")) +
+      (offMoves.length ? `<div class="onlyline">Showing only <b>${esc(onlyNames)}</b> <button class="link" type="button" data-fix="moves">Show all moves</button></div>` : "");
     const list = $("list"); list.innerHTML = "";
     rows.slice(0, state.shown).forEach(t => list.appendChild(rowEl(t, rel, setAnchor, state.anchor)));
     $("more").hidden = rows.length <= state.shown;
+    if (!rows.length) {
+      const lo = parseFloat(tmin.value), hi = parseFloat(tmax.value), fixes = [];
+      if (offMoves.length) fixes.push(`<button class="btn" type="button" data-fix="moves">Show all moves</button>`);
+      if (lo || hi) fixes.push(`<button class="btn ghost" type="button" data-fix="tempo">Widen tempo</button>`);
+      if (sel.value) fixes.push(`<button class="btn ghost" type="button" data-fix="crate">All crates</button>`);
+      list.innerHTML = `<div class="empty"><p class="note">Nothing matches${offMoves.length ? ` — only <b>${esc(onlyNames)}</b> is switched on` : ""}${lo || hi ? `${offMoves.length ? "," : " —"} tempo ${lo || "any"} to ${hi || "any"}` : ""}${sel.value ? ", one crate only" : ""}.</p><div class="acts">${fixes.join("")}</div></div>`;
+    }
   }
+  document.addEventListener("click", e => {
+    const b = e.target.closest("[data-fix]"); if (!b) return;
+    const f = b.dataset.fix;
+    if (f === "moves") state.on = { ...ALL_ON };
+    if (f === "tempo") { const lo = parseFloat(tmin.value), hi = parseFloat(tmax.value); if (lo) tmin.value = Math.max(0, lo - 6); if (hi) tmax.value = hi + 6; }
+    if (f === "crate") sel.value = "";
+    state.shown = 60; saveState(); render();
+  });
   $("more").onclick = () => { state.shown += 60; paintList(); };
 
   function setAnchor(t, fromTrail, quiet) {
@@ -456,7 +474,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.5";
+  const APP_VERSION = "1.6";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------

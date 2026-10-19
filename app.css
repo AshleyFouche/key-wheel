@@ -281,3 +281,6 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 
 .devhelp{font-size:13px;color:var(--muted);line-height:1.5;border-top:1px solid var(--line);padding:12px 2px}
 .devhelp b{color:var(--ink)}
+
+.sheet a.item{display:flex;align-items:center;gap:12px;width:100%;border-top:1px solid var(--line);padding:14px 2px;font-size:15px;color:var(--ink);text-decoration:none}
+.sheet a.item span{width:22px;text-align:center;color:var(--muted)}

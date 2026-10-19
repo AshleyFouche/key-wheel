@@ -656,9 +656,30 @@
   $("pvPrev").onclick = async () => { try { await Spotify.previous(); setTimeout(pollNow, 700); } catch (e) { playError(e); } };
   $("pvNext").onclick = async () => { try { await Spotify.next(); setTimeout(pollNow, 700); } catch (e) { playError(e); } };
   const devIcon = t => ({ Smartphone: "📱", Computer: "💻", Speaker: "🔊", TV: "📺", CastAudio: "🔊", CastVideo: "📺", AVR: "🔊", Tablet: "📱", Automobile: "🚗" }[t] || "🔈");
+  const isCast = d => /cast/i.test(d.type || "") || /google|nest|chromecast/i.test(d.name || "");
   const devHint = d => d.type === "Smartphone" || d.type === "Computer" || d.type === "Tablet"
     ? "Crossfade works here. Send the sound on with AirPlay, Bluetooth or a cable."
+    : isCast(d) ? "Google speaker: switching to it often only works from the Spotify app."
     : "Spotify Connect: best sound quality, but no crossfade.";
+  // Spotify sometimes accepts a switch but never moves playback (common with Google speakers). Check, and say so.
+  async function verifySwitch(d) {
+    await new Promise(r => setTimeout(r, 2500));
+    try {
+      const st = await Spotify.playerState();
+      if (st && st.device === d.name) { toast("Now playing on " + d.name); pollNow(); setTimeout(checkHanded, 1500); return; }
+    } catch (e) {}
+    showSwitchFailed(d);
+  }
+  function showSwitchFailed(d) {
+    const sh = $("sheet");
+    sh.innerHTML = `<div class="grab"></div><div class="sh-t">Couldn't switch to ${esc(d.name)}</div>
+      <div class="sh-a">${isCast(d) ? "Google and Chromecast speakers can only be started reliably from the Spotify app itself, because the app has to find them on your home Wi-Fi. Pick it in Spotify; ASH//FLOW keeps controlling the music once it's playing there." : "Spotify didn't move playback to this device. Check it's switched on and connected, open Spotify on it if you can, then try again."}</div>
+      <a class="item" href="spotify:"><span>↗</span>Open Spotify</a>
+      <button class="item" type="button" id="swClose"><span>✕</span>Close</button>`;
+    sh.hidden = false; $("sheetBg").hidden = false;
+    $("swClose").onclick = closeMenu;
+    pollNow();
+  }
   $("pvDevice").onclick = async () => {
     const sh = $("sheet");
     sh.innerHTML = '<div class="grab"></div><div class="sh-t">Play on</div><div class="sh-a">Loading your devices…</div>';
@@ -674,8 +695,9 @@
         const d = ds[parseInt(b.dataset.i)];
         closeMenu();
         if (d.is_active) return;
-        try { await Spotify.transfer(d.id); toast("Now playing on " + d.name); setTimeout(pollNow, 1200); setTimeout(checkHanded, 2500); }
-        catch (e) { playError(e); }
+        toast("Switching to " + d.name + "…");
+        try { await Spotify.transfer(d.id); verifySwitch(d); }
+        catch (e) { showSwitchFailed(d); }
       });
     } catch (e) { sh.querySelector(".sh-a").textContent = "Couldn't load devices: " + e.message; }
   };

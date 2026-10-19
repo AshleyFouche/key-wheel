@@ -56,11 +56,16 @@
         <div class="pv-times"><span id="pvPos">0:00</span><span id="pvDev"></span><span id="pvLeft">-0:00</span></div>
       </div>
       <div class="pv-ctrl">
-        <button type="button" id="pvPrev" aria-label="Previous track">⏮</button>
-        <button type="button" id="pvPP" class="big" aria-label="Play or pause">▶</button>
-        <button type="button" id="pvNext" aria-label="Next track">⏭</button>
+        <button type="button" id="pvPrev" aria-label="Previous track"></button>
+        <button type="button" id="pvPP" class="big" aria-label="Play or pause"></button>
+        <button type="button" id="pvNext" aria-label="Next track"></button>
       </div>
-      <button class="devbtn" id="pvDevice" type="button"><span class="dico" id="pvDevIco">🔈</span><span><small>Playing on</small><b id="pvDevName">—</b></span><span class="chev">▾</span></button>
+      <div class="pv-vol" id="pvVolRow">
+        <span class="vi" id="pvVolIco"></span>
+        <input type="range" id="pvVol" min="0" max="100" step="1" value="50" aria-label="Volume">
+        <span class="vp" id="pvVolPct">–</span>
+      </div>
+      <button class="devbtn" id="pvDevice" type="button"><span class="dico" id="pvDevIco"></span><span><small>Playing on</small><b id="pvDevName">—</b></span><span class="chev" id="pvChev"></span></button>
       <button class="btn" id="pvMix" type="button">Mix out of this</button>
       <div class="qhead"><h2>Up next</h2><button class="btn ghost danger" id="qClear" type="button" hidden>Clear queue</button></div>
       <p class="note">Swipe right on any track to queue it. Drag <b>≡</b> to reorder, tap <b>✕</b> to remove. Each label shows how the track mixes from the one before it.</p>
@@ -287,7 +292,14 @@
   <div class="np-main">
     <span class="np-art" id="npArt"></span>
     <div class="np-text"><div class="np-t" id="npTitle"></div><div class="np-a" id="npSub"></div></div>
-    <button class="np-pp" id="npPP" type="button" aria-label="Play or pause">▶</button>
+    <button class="np-vol" id="npVolBtn" type="button" aria-label="Volume"></button>
+    <button class="np-pp" id="npPP" type="button" aria-label="Play or pause"></button>
+  </div>
+  <div class="np-volrow" id="npVolRow" hidden>
+    <button class="vstep" id="npVolDown" type="button" aria-label="Volume down">−</button>
+    <input type="range" id="npVol" min="0" max="100" step="1" value="50" aria-label="Volume">
+    <button class="vstep" id="npVolUp" type="button" aria-label="Volume up">+</button>
+    <span class="vp" id="npVolPct">–</span>
   </div>
   <div class="np-acts">
     <button class="chip" id="npMix" type="button">Mix out of this</button>
@@ -307,6 +319,7 @@
 <div class="sheet-bg" id="sheetBg" hidden></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Track options" hidden></div>
 
+<script src="icons.js"></script>
 <script src="config.js"></script>
 <script src="spotify.js"></script>
 <script src="app.js"></script>

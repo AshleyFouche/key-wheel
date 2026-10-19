@@ -212,7 +212,7 @@
     const keyHtml = t.key ? `<span class="key" style="background:${col(parseInt(t.key))}">${t.key}</span>` : `<span class="key none">?</span>`;
     r.innerHTML = `${keyHtml}<span class="bpm">${t.tempo || "–"}</span>
       <span class="tt" role="button" tabindex="0">${m ? `<div class="rel">${m}</div>` : ""}<div>${esc(t.title)}</div><div class="a">${esc(t.artist)}</div></span>
-      <button class="play" type="button" aria-label="Play in Spotify">▶</button>
+      <button class="play" type="button" aria-label="Play in Spotify">${IC.play}</button>
       <button class="add${crate.includes(t.id) ? " in" : ""}" type="button" aria-label="Add to crate">${crate.includes(t.id) ? "✓" : "+"}</button>
       <button class="more-btn" type="button" aria-label="More options">⋯</button>`;
     r._track = t;
@@ -561,7 +561,7 @@
     $("npArt").style.backgroundImage = "";
     $("npTitle").textContent = "Reconnect Spotify to play from ASH//FLOW";
     $("npSub").textContent = "One-time step to allow playback control.";
-    $("npPP").textContent = "↻"; $("npPP").onclick = () => Spotify.login().catch(err => toast(err.message));
+    $("npPP").innerHTML = IC.reconnect; $("npPP").onclick = () => Spotify.login().catch(err => toast(err.message));
   }
   function paintNp() {
     if (!np || np.none) { npBar.hidden = true; document.body.classList.remove("has-np"); return; }
@@ -570,7 +570,8 @@
     $("npArt").style.backgroundImage = np.art ? `url("${np.art}")` : "";
     $("npTitle").textContent = np.title;
     $("npSub").innerHTML = (rec && rec.key ? `<span class="k" style="background:${col(parseInt(rec.key))}">${rec.key}</span>${rec.tempo ? rec.tempo + " · " : ""}` : '<span class="k" style="background:var(--surface);color:var(--muted)">?</span>') + esc(np.artist);
-    $("npPP").textContent = np.playing ? "❚❚" : "▶";
+    $("npPP").innerHTML = np.playing ? IC.pause : IC.play;
+    paintVolume();
     $("npPP").onclick = async () => {
       try { if (np.playing) await Spotify.pause(); else await Spotify.resume(); np.playing = !np.playing; paintNp(); setTimeout(pollNow, 800); } catch (e) { playError(e); }
     };
@@ -634,8 +635,8 @@
       : "No key yet in your library";
     $("pvDev").textContent = "";
     $("pvDevName").textContent = np.device || "Unknown device";
-    $("pvDevIco").textContent = devIcon(np.deviceType);
-    $("pvPP").textContent = np.playing ? "❚❚" : "▶";
+    $("pvDevIco").innerHTML = devIcon(np.deviceType); paintVolume();
+    $("pvPP").innerHTML = np.playing ? IC.pause : IC.play;
     $("pvMix").disabled = !(rec && rec.key);
     paintProgress();
   }
@@ -655,7 +656,7 @@
   $("pvPP").onclick = () => $("npPP").click();
   $("pvPrev").onclick = async () => { try { await Spotify.previous(); setTimeout(pollNow, 700); } catch (e) { playError(e); } };
   $("pvNext").onclick = async () => { try { await Spotify.next(); setTimeout(pollNow, 700); } catch (e) { playError(e); } };
-  const devIcon = t => ({ Smartphone: "📱", Computer: "💻", Speaker: "🔊", TV: "📺", CastAudio: "🔊", CastVideo: "📺", AVR: "🔊", Tablet: "📱", Automobile: "🚗" }[t] || "🔈");
+  const devIcon = t => ({ Smartphone: IC.phone, Computer: IC.laptop, Speaker: IC.speaker, TV: IC.tv, CastAudio: IC.speaker, CastVideo: IC.tv, AVR: IC.speaker, Tablet: IC.phone, Automobile: IC.car }[t] || IC.speaker);
   const isCast = d => /cast/i.test(d.type || "") || /google|nest|chromecast/i.test(d.name || "");
   const devHint = d => d.type === "Smartphone" || d.type === "Computer" || d.type === "Tablet"
     ? "Crossfade works here. Send the sound on with AirPlay, Bluetooth or a cable."
@@ -674,8 +675,8 @@
     const sh = $("sheet");
     sh.innerHTML = `<div class="grab"></div><div class="sh-t">Couldn't switch to ${esc(d.name)}</div>
       <div class="sh-a">${isCast(d) ? "Google and Chromecast speakers can only be started reliably from the Spotify app itself, because the app has to find them on your home Wi-Fi. Pick it in Spotify; ASH//FLOW keeps controlling the music once it's playing there." : "Spotify didn't move playback to this device. Check it's switched on and connected, open Spotify on it if you can, then try again."}</div>
-      <a class="item" href="spotify:"><span>↗</span>Open Spotify</a>
-      <button class="item" type="button" id="swClose"><span>✕</span>Close</button>`;
+      <a class="item" href="spotify:"><span>${IC.open}</span>Open Spotify</a>
+      <button class="item" type="button" id="swClose"><span>${IC.close}</span>Close</button>`;
     sh.hidden = false; $("sheetBg").hidden = false;
     $("swClose").onclick = closeMenu;
     pollNow();
@@ -689,7 +690,7 @@
       if (!ds.length) { sh.querySelector(".sh-a").textContent = "No devices found. Open Spotify on your phone or another device, then try again."; return; }
       sh.innerHTML = '<div class="grab"></div><div class="sh-t">Play on</div>' +
         ds.map((d, i) => `<button class="item dev${d.is_active ? " on" : ""}" type="button" data-i="${i}"><span>${devIcon(d.type)}</span><div><div>${esc(d.name)}${d.is_active ? " · playing" : ""}</div><small>${esc(devHint(d))}</small></div></button>`).join("") +
-        `<div class="devhelp"><b>Missing a device?</b><br>Your iPhone: open the Spotify app for a few seconds, then tap Refresh.<br>Google, Nest or Chromecast speakers: Spotify only lets other apps see these once a session has started on them, so pick it once in the Spotify app; after that you can switch to and from it here.</div><button class="item" type="button" id="devRefresh"><span>↻</span>Refresh</button>`;
+        `<div class="devhelp"><b>Missing a device?</b><br>Your iPhone: open the Spotify app for a few seconds, then tap Refresh.<br>Google, Nest or Chromecast speakers: Spotify only lets other apps see these once a session has started on them, so pick it once in the Spotify app; after that you can switch to and from it here.</div><button class="item" type="button" id="devRefresh"><span>${IC.refresh}</span>Refresh</button>`;
       $("devRefresh").onclick = () => $("pvDevice").click();
       sh.querySelectorAll("[data-i]").forEach(b => b.onclick = async () => {
         const d = ds[parseInt(b.dataset.i)];
@@ -701,6 +702,38 @@
       });
     } catch (e) { sh.querySelector(".sh-a").textContent = "Couldn't load devices: " + e.message; }
   };
+  // ---------- volume ----------
+  let volTimer = null, volDragging = false, pendingVol = null;
+  function volIcon(v) { return v == null ? IC.vol1 : v === 0 ? IC.vol0 : v < 50 ? IC.vol1 : IC.vol2; }
+  function paintVolume() {
+    const can = !!(np && np.canVolume && np.volume != null);
+    const v = can ? (pendingVol ?? np.volume) : null;
+    [["pvVol", "pvVolPct"], ["npVol", "npVolPct"]].forEach(([sl, pc]) => {
+      const el = $(sl); el.disabled = !can;
+      if (!volDragging && v != null) { el.value = v; el.style.setProperty("--pct", v + "%"); }
+      $(pc).textContent = can ? v + "%" : "—";
+    });
+    $("pvVolIco").innerHTML = volIcon(v); $("npVolBtn").innerHTML = volIcon(v);
+    $("pvVolRow").title = can ? "" : "This device doesn't allow volume control from other apps";
+    $("npVolDown").disabled = $("npVolUp").disabled = !can;
+  }
+  function sendVolume(v) {
+    pendingVol = v; if (np) np.volume = v;
+    clearTimeout(volTimer);
+    volTimer = setTimeout(async () => {
+      try { await Spotify.setVolume(v); } catch (e) { if (e.status === 403) toast("This device doesn't allow volume control from ASH//FLOW"); else playError(e); }
+      setTimeout(() => { pendingVol = null; }, 1500);
+    }, 180);
+  }
+  ["pvVol", "npVol"].forEach(id => {
+    const el = $(id);
+    el.addEventListener("input", () => { volDragging = true; const v = parseInt(el.value); el.style.setProperty("--pct", v + "%"); sendVolume(v); volDragging = false; paintVolume(); });
+  });
+  $("npVolBtn").onclick = () => { $("npVolRow").hidden = !$("npVolRow").hidden; document.body.classList.toggle("np-vol-open", !$("npVolRow").hidden); paintVolume(); };
+  $("npVolDown").onclick = () => { if (np && np.volume != null) sendVolume(Math.max(0, (pendingVol ?? np.volume) - 5)), paintVolume(); };
+  $("npVolUp").onclick = () => { if (np && np.volume != null) sendVolume(Math.min(100, (pendingVol ?? np.volume) + 5)), paintVolume(); };
+  $("pvPrev").innerHTML = IC.prev; $("pvNext").innerHTML = IC.next; $("pvPP").innerHTML = IC.play; $("npPP").innerHTML = IC.play;
+  $("pvChev").innerHTML = IC.chev; $("pvDevIco").innerHTML = IC.speaker; $("npVolBtn").innerHTML = IC.vol1; $("pvVolIco").innerHTML = IC.vol1;
   $("pvTitle").onclick = () => { if (np && np.albumId) openAlbum(np.albumId); };
   $("pvArtist").onclick = () => { if (np) chooseArtist(np.artists); };
   $("npTitle").onclick = () => { if (np) { go("playing"); window.scrollTo(0, 0); } };
@@ -819,13 +852,13 @@
     const sh = $("sheet");
     const inCrate = crate.includes(t.id);
     sh.innerHTML = `<div class="grab"></div><div class="sh-t">${esc(t.title)}</div><div class="sh-a">${esc(t.artist)}${t.key ? ` · ${t.key} ${NAMES[t.key]}` : ""}${t.tempo ? ` · ${t.tempo} tempo` : ""}</div>
-      <button class="item" data-a="play" type="button"><span>▶</span>Play now</button>
-      <button class="item" data-a="queue" type="button"><span>⤓</span>Add to queue</button>
-      <button class="item" data-a="crate" type="button"><span>${inCrate ? "✓" : "+"}</span>${inCrate ? "Remove from crate" : "Add to crate"}</button>
-      <button class="item" data-a="mix" type="button" ${t.key ? "" : "disabled"}><span>◎</span>Mix out of this</button>
-      <button class="item" data-a="artist" type="button"><span>👤</span>Go to artist</button>
-      <button class="item" data-a="album" type="button"><span>💿</span>Go to album</button>
-      <button class="item" data-a="open" type="button"><span>↗</span>Open in Spotify</button>`;
+      <button class="item" data-a="play" type="button"><span>${IC.play}</span>Play now</button>
+      <button class="item" data-a="queue" type="button"><span>${IC.queue}</span>Add to queue</button>
+      <button class="item" data-a="crate" type="button"><span>${IC.crate}</span>${inCrate ? "Remove from crate" : "Add to crate"}</button>
+      <button class="item" data-a="mix" type="button" ${t.key ? "" : "disabled"}><span>${IC.mix}</span>Mix out of this</button>
+      <button class="item" data-a="artist" type="button"><span>${IC.artist}</span>Go to artist</button>
+      <button class="item" data-a="album" type="button"><span>${IC.album}</span>Go to album</button>
+      <button class="item" data-a="open" type="button"><span>${IC.open}</span>Open in Spotify</button>`;
     sh.hidden = false; $("sheetBg").hidden = false;
     const act = a => sh.querySelector(`[data-a="${a}"]`);
     act("play").onclick = () => { closeMenu(); playTrack(t); };
@@ -844,7 +877,7 @@
       try {
         const d = await Spotify.getTrack(t.id);
         if (d.artists.length === 1) { closeMenu(); openArtist(d.artists[0].id, d.artists[0].name); return; }
-        sh.innerHTML = '<div class="grab"></div><div class="sh-t">Which artist?</div>' + d.artists.map(a => `<button class="item" type="button" data-id="${esc(a.id)}"><span>👤</span>${esc(a.name)}</button>`).join("");
+        sh.innerHTML = '<div class="grab"></div><div class="sh-t">Which artist?</div>' + d.artists.map(a => `<button class="item" type="button" data-id="${esc(a.id)}"><span>${IC.artist}</span>${esc(a.name)}</button>`).join("");
         sh.querySelectorAll("[data-id]").forEach(b => b.onclick = () => { closeMenu(); openArtist(b.dataset.id, b.textContent.trim()); });
       } catch (e) { closeMenu(); toast("Couldn't load the artist"); }
     };
@@ -869,7 +902,7 @@
     if (!artists || !artists.length) return;
     if (artists.length === 1) { openArtist(artists[0].id, artists[0].name); return; }
     const sh = $("sheet");
-    sh.innerHTML = '<div class="grab"></div><div class="sh-t">Which artist?</div>' + artists.map(a => `<button class="item" type="button" data-id="${esc(a.id)}"><span>👤</span>${esc(a.name)}</button>`).join("");
+    sh.innerHTML = '<div class="grab"></div><div class="sh-t">Which artist?</div>' + artists.map(a => `<button class="item" type="button" data-id="${esc(a.id)}"><span>${IC.artist}</span>${esc(a.name)}</button>`).join("");
     sh.hidden = false; $("sheetBg").hidden = false;
     sh.querySelectorAll("[data-id]").forEach(b => b.onclick = () => { closeMenu(); openArtist(b.dataset.id, b.textContent.trim()); });
   }

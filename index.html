@@ -68,6 +68,9 @@
       </div>
       <button class="devbtn" id="pvDevice" type="button"><span class="dico" id="pvDevIco"></span><span><small>Playing on</small><b id="pvDevName">—</b></span><span class="chev" id="pvChev"></span></button>
       <button class="btn" id="pvMix" type="button">Mix out of this</button>
+      <div class="qhead"><h2>Suggested next</h2></div>
+      <p class="note" id="sugNote">Best matches from what's playing, by key and tempo. Swipe right to queue.</p>
+      <div class="list" id="pvSuggest"></div>
       <div class="qhead"><h2>Up next</h2><button class="btn ghost danger" id="qClear" type="button" hidden>Clear queue</button></div>
       <p class="note">Swipe right on any track to queue it. Drag <b>≡</b> to reorder, tap <b>✕</b> to remove. Each label shows how the track mixes from the one before it.</p>
       <div class="list" id="pvQueue"></div>
@@ -290,6 +293,7 @@
 </main>
 
 <div class="np" id="np" hidden>
+  <div class="np-heads" id="npHeads" hidden></div>
   <div class="np-main">
     <span class="np-art" id="npArt"></span>
     <div class="np-text"><div class="np-t" id="npTitle"></div><div class="np-a" id="npSub"></div></div>

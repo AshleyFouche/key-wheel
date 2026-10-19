@@ -409,3 +409,22 @@ body{min-height:100vh;min-height:100lvh}
 .where .wl{margin-left:0!important;min-width:58px}
 #pvWhere .wrow{justify-content:center}
 #pvWhere .wl{min-width:0}
+
+/* heads-up */
+.np-heads{display:grid;gap:6px;max-width:760px;width:100%;margin:0 auto;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.hline{display:grid;grid-template-columns:auto minmax(0,1fr) 28px;gap:8px;align-items:center;font-size:12.5px}
+.hclock{font-family:var(--mono);font-weight:700;font-size:12px;padding:3px 8px;border-radius:999px;background:var(--surface);color:var(--ink);font-variant-numeric:tabular-nums}
+.hline.empty .hclock,.hline.clash .hclock{background:color-mix(in srgb,var(--warn) 22%,var(--surface));color:var(--warn)}
+.hline.ok .hclock{color:var(--good)}
+.hmsg{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.hline.clash .hmsg,.hline.empty .hmsg{color:var(--ink)}
+.hx{width:28px;height:28px;border:0;background:none;color:var(--muted);display:grid;place-items:center;cursor:pointer}
+.hx .ico{width:16px;height:16px}
+.hsug{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center}
+.hsug .k{font-size:10.5px}
+.hsug .ht{min-width:0;display:grid}
+.hsug .ht b{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hsug .ht small{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hsug small{color:var(--muted);font-size:12px}
+.hq{border:1px solid var(--good);color:var(--good);background:transparent;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer}
+body.has-np.has-heads{padding-bottom:calc(var(--tabs-h) + env(safe-area-inset-bottom,0px) + 290px)}

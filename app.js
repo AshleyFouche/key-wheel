@@ -613,7 +613,8 @@
       if (np && handed && np.id === handed) { handed = null; saveQ(); }
       if (np && np.id !== lastNpId) {
         lastNpId = np.id;
-        checkHanded();
+        checkHanded(); headsKey = "";
+        if (!$("view-playing").hidden) paintSuggest();
         if (follow) { const rec = byId.get(np.id); if (rec && rec.key && (!state.anchor || state.anchor.id !== rec.id)) setAnchor(rec, false, true); }
       }
       paintNp(); paintPlaying(); pump();
@@ -755,7 +756,7 @@
   // Spotify lets apps add to its queue but never remove, so the queue lives here.
   // Only the next track is handed to Spotify; when it starts playing, the following one is handed over.
   let appQ = ls.get("kw.appq", []), handed = ls.get("kw.handed", null), pumping = false;
-  function saveQ() { ls.set("kw.appq", appQ); ls.set("kw.handed", handed); paintModes(); paintQueue(); }
+  function saveQ() { ls.set("kw.appq", appQ); ls.set("kw.handed", handed); paintModes(); paintQueue(); if (typeof paintSuggest === "function") paintSuggest(); }
   function enqueue(t) {
     if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return; }
     if (!Spotify.canPlay()) { showReconnect(); return; }
@@ -1043,13 +1044,103 @@
     });
   }
 
+  // ---------- suggestion engine ----------
+  const MOVE_W = { same: 1, adj: 0.9, rel: 0.85, diag: 0.75, boost: 0.7 };
+  function playedThisFlow() {
+    const h = ls.get("kw.history", []), out = new Set();
+    for (let i = h.length - 1; i >= 0; i--) { if (i < h.length - 1 && h[i + 1].at - h[i].at > GAP) break; if (Date.now() - h[i].at > 8 * 3600e3) break; out.add(h[i].id); }
+    return out;
+  }
+  // Higher is better. Hooks for set direction and transition memory.
+  function scoreFor(from, t, m) {
+    const dt = from.tempo && t.tempo ? t.tempo - from.tempo : 0;
+    let sc = (MOVE_W[m] || 0) + (1 - Math.min(Math.abs(dt), 8) / 8) * 0.8;
+    sc += dirBonus(from, t, m, dt);
+    sc += memBonus(from.id, t.id);
+    return sc;
+  }
+  function suggest(from, n) {
+    if (!from || !from.key) return [];
+    const rel = relations(from.key), skip = playedThisFlow();
+    skip.add(from.id); if (handed) skip.add(handed); appQ.forEach(id => skip.add(id));
+    const out = [];
+    for (const t of T) {
+      if (skip.has(t.id)) continue;
+      const m = rel[t.key]; if (!m) continue;
+      if (from.tempo && t.tempo && Math.abs(t.tempo - from.tempo) > 8) continue;
+      out.push({ t, m, sc: scoreFor(from, t, m) });
+    }
+    return out.sort((a, b) => b.sc - a.sc).slice(0, n);
+  }
+  let dirBonus = () => 0;   // set direction (see below)
+  let memBonus = () => 0;   // transition memory (see below)
+  const tempoDelta = (from, t) => { const d = from.tempo && t.tempo ? t.tempo - from.tempo : 0; return d ? (d > 0 ? "+" : "") + d + " tempo" : "same tempo"; };
+
+  // ---------- heads-up before the track ends ----------
+  const headsDismissed = new Set();
+  function headsState() {
+    if (!np || !np.playing || !np.duration) return null;
+    const left = np.duration - posNow();
+    if (left > 60000 || left < 1500 || headsDismissed.has(np.id)) return null;
+    const cur = byId.get(np.id), nextId = handed || appQ[0] || null, next = nextId ? recOf(nextId, qMeta.get(nextId)) : null;
+    let mode = "ok";
+    if (!next) mode = "empty";
+    else if (cur && cur.key && next.key && !relations(cur.key)[next.key]) mode = "clash";
+    return { left, cur, next, mode };
+  }
+  let headsKey = "";
+  function paintHeads() {
+    const box = $("npHeads"), st = headsState();
+    if (!st || npBar.hidden) { if (!box.hidden) { box.hidden = true; document.body.classList.remove("has-heads"); headsKey = ""; } return; }
+    const secs = Math.ceil(st.left / 1000), clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+    const key = st.mode + "|" + np.id + "|" + (st.next ? st.next.id : "") + "|" + appQ.length;
+    if (key === headsKey) { const c = box.querySelector(".hclock"); if (c) c.textContent = clock + " left"; return; }
+    headsKey = key;
+    box.hidden = false; document.body.classList.add("has-heads");
+    let html = `<div class="hline ${st.mode}"><span class="hclock">${clock} left</span><span class="hmsg">`;
+    if (st.mode === "empty") html += "Queue is empty — pick what plays next";
+    else if (st.mode === "clash") html += `Next up clashes: ${st.cur.key} → ${st.next.key} · ${esc(st.next.title)}`;
+    else { const m = st.cur && st.cur.key && st.next.key ? relations(st.cur.key)[st.next.key] : null; html += `Next: ${esc(st.next.title)}${m ? " · " + MOVE_NAME[m] : ""}`; }
+    html += `</span><button type="button" class="hx" aria-label="Dismiss">${IC.close}</button></div>`;
+    if (st.mode !== "ok" && st.cur && st.cur.key) {
+      const sug = suggest(st.cur, 3);
+      html += sug.map(x => `<div class="hsug"><span class="k" style="background:${col(parseInt(x.t.key))}">${x.t.key}</span><span class="ht"><b>${esc(x.t.title)}</b><small>${esc(x.t.artist)} · ${x.t.tempo || "–"} · ${MOVE_NAME[x.m]}</small></span><button type="button" class="hq" data-id="${esc(x.t.id)}">${st.mode === "clash" && !handed ? "Play next" : "Queue"}</button></div>`).join("");
+      if (!sug.length) html += '<div class="hsug"><small>No close matches in your library for this one.</small></div>';
+    }
+    box.innerHTML = html;
+    box.querySelector(".hx").onclick = () => { headsDismissed.add(np.id); paintHeads(); };
+    box.querySelectorAll(".hq").forEach(b => b.onclick = () => {
+      const t = byId.get(b.dataset.id); if (!t) return;
+      if (b.textContent === "Play next") { appQ.unshift(t.id); saveQ(); pump(); toast("Up next: " + t.title); } else enqueue(t);
+      headsKey = ""; paintHeads();
+    });
+  }
+  setInterval(paintHeads, 1000);
+
+  // ---------- Suggested next on the Playing tab ----------
+  function paintSuggest() {
+    const box = $("pvSuggest"); if (!box || $("view-playing").hidden) return;
+    const cur = np && byId.get(np.id);
+    box.innerHTML = "";
+    if (!cur || !cur.key) { box.innerHTML = '<p class="note">Suggestions appear when the playing track has a key in your library.</p>'; return; }
+    const sug = suggest(cur, 6);
+    if (!sug.length) { box.innerHTML = '<p class="note">No close matches in your library.</p>'; return; }
+    sug.forEach(x => {
+      const r = rowEl(x.t, null, setAnchor);
+      const lab = document.createElement("div"); lab.className = "rel";
+      lab.textContent = MOVE_NAME[x.m] + (tempoDelta(cur, x.t) ? " · " + tempoDelta(cur, x.t) : "");
+      r.querySelector(".tt").prepend(lab);
+      box.appendChild(r);
+    });
+  }
+
   // ---------- tabs + spotify button ----------
   function go(v, skipPaint) {
     document.querySelectorAll(".view").forEach(s => s.hidden = s.id !== "view-" + v);
     const tabFor = v === "info" ? "more" : v === "browse" ? returnView : v === "match" ? matchReturn : v;
     document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === tabFor));
     document.body.classList.toggle("on-playing", v === "playing");
-    if (v === "playing") { paintPlaying(); paintQueue(); if (Spotify.connected() && Spotify.canPlay()) startPolling(); }
+    if (v === "playing") { paintPlaying(); paintQueue(); paintSuggest(); if (Spotify.connected() && Spotify.canPlay()) startPolling(); }
     else if (typeof npTimer !== "undefined" && npTimer && Spotify.canPlay()) startPolling();
     if (v === "crate") paintCrate();
     if (v === "history") { paintHistory(); syncRecent(); }

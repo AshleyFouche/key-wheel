@@ -55,8 +55,9 @@
   // ---------- state ----------
   const saved = ls.get("kw.state", {});
   const state = {
-    key: saved.key === null ? null : (normKey(saved.key) || "8A"),
-    on: Object.assign({}, ALL_ON, saved.on || {}),
+    // Every launch starts clean: all tracks, all moves on. Only Direction carries over.
+    key: null,
+    on: { ...ALL_ON },
     anchor: null, trail: [], shown: 60,
     dir: ["build", "hold", "cool"].includes(saved.dir) ? saved.dir : "any"
   };
@@ -510,7 +511,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.14";
+  const APP_VERSION = "1.15";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1424,9 +1425,7 @@
     buildWheel();
     const res = await Spotify.handleRedirect().catch(e => ({ error: e.message }));
     await loadLibrary();
-    const tIds = saved.trail || [];
-    state.trail = tIds.map(id => byId.get(id)).filter(t => t && t.key);
-    if (saved.anchor) { const a = byId.get(saved.anchor); if (a && a.key) { state.anchor = a; state.key = a.key; if (a.tempo) { tmin.value = a.tempo - 6; tmax.value = a.tempo + 6; } } }
+    saveState();
     crateOptions(); saveCrate(); paintSpotifyBtn(); render();
     let v = "wheel"; try { v = sessionStorage.getItem("kw.view") || "wheel"; } catch (e) {}
     go(v);

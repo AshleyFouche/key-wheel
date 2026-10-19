@@ -455,7 +455,7 @@
       const known = recs.filter(r => r.key).length;
       w.querySelector(".note").textContent = `${tracks.length} tracks · ${known} with a key in your library${known < tracks.length ? ` · ${tracks.length - known} still need one: screenshot this playlist in Spotify's Mix view, send it to Claude, then tap Add keys` : ""}`;
       const acts = document.createElement("div"); acts.className = "crate-actions";
-      acts.innerHTML = '<button class="btn" type="button" id="plKeys">Add keys</button><button class="btn ghost" type="button" id="plAll">Add tracks with keys to crate</button>';
+      acts.innerHTML = '<button class="btn" type="button" id="plKeys">Add keys</button><button class="btn ghost" type="button" id="plAll">Add tracks with keys to crate</button><button class="btn ghost" type="button" id="plReorder">Reorder</button>';
       w.appendChild(acts);
       const pb = document.createElement("div"); pb.className = "pastebox"; pb.hidden = true;
       pb.innerHTML = '<p class="note">Paste the lines Claude gave you for this playlist. They\'re matched to the exact tracks in it; anything not found here is searched on Spotify.</p><textarea id="plPaste" rows="6" placeholder="7B | 130 | Positive | Jamback | 2:49"></textarea><button class="btn" type="button" id="plMatch">Match</button>';
@@ -464,8 +464,41 @@
       $("plMatch").onclick = () => startMatch($("plPaste").value, tracks, "playlists");
       $("plAll").onclick = () => { recs.filter(r => r.key).forEach(r => { if (!crate.includes(r.id)) crate.push(r.id); }); saveCrate(); toast("Added to crate"); };
       const list = document.createElement("div"); list.className = "list";
-      recs.forEach(t => list.appendChild(rowEl(t, null, setAnchor)));
+      // order[i] = original index of the track now at position i, kept in step with Spotify.
+      let order = recs.map((_, i) => i), reorder = false, snap = null, chain = Promise.resolve();
+      const paintRows = () => {
+        list.innerHTML = "";
+        order.forEach(i => {
+          const r = rowEl(recs[i], null, setAnchor);
+          if (reorder) { r.classList.add("crow"); r.dataset.id = String(i); const h = document.createElement("span"); h.className = "drag"; h.textContent = "≡"; h.setAttribute("aria-label", "Drag to reorder"); r.prepend(h); }
+          list.appendChild(r);
+        });
+      };
+      paintRows();
       w.appendChild(list);
+      $("plReorder").onclick = () => {
+        reorder = !reorder; $("plReorder").textContent = reorder ? "Done" : "Reorder"; $("plReorder").classList.toggle("on", reorder);
+        if (reorder) toast("Drag the ≡ handles. Each move saves to Spotify straight away.");
+        paintRows();
+      };
+      makeSortable(list, ids => {
+        if (!reorder) return;
+        const next = ids.map(Number);
+        let i = 0; while (i < next.length && next[i] === order[i]) i++;
+        if (i === next.length) return;
+        let from, before;
+        const upCheck = order.slice(); const idx = upCheck.indexOf(next[i]); upCheck.splice(idx, 1); upCheck.splice(i, 0, next[i]);
+        if (upCheck.every((v, k) => v === next[k])) { from = idx; before = i; }          // dragged up
+        else { from = i; before = next.indexOf(order[i]) + 1; }                            // dragged down
+        const prev = order; order = next;
+        chain = chain.then(async () => {
+          try { snap = await Spotify.moveInPlaylist(p.id, from, before, snap) || snap; toast("Saved to Spotify"); }
+          catch (e) {
+            order = prev; paintRows();
+            toast(e.status === 403 ? "Spotify won't let this playlist be reordered (only your own playlists can be)" : e.code === "auth" ? "Spotify sign-in expired — tap Connect Spotify" : "Couldn't save the new order: " + e.message);
+          }
+        });
+      });
     } catch (e) {
       w.querySelector(".note").textContent = "Couldn't load this playlist: " + e.message;
     }
@@ -474,7 +507,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.7";
+  const APP_VERSION = "1.8";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------

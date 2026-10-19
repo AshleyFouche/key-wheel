@@ -328,7 +328,7 @@ body.has-np.np-vol-open{padding-bottom:calc(var(--tabs-h) + env(safe-area-inset-
 h2{font-size:18px}
 main{padding-top:12px}
 .view{gap:12px}
-.top{padding-top:calc(env(safe-area-inset-top,0px) + 8px);padding-bottom:8px}
+.top{padding-top:calc(env(safe-area-inset-top,0px) + 16px);padding-bottom:8px}
 .brand{font-size:20px}
 .pill{font-size:12px;padding:5px 11px}
 
@@ -465,3 +465,4 @@ body.has-np.has-heads{padding-bottom:calc(var(--tabs-h) + env(safe-area-inset-bo
 .empty{padding:16px 0;display:grid;gap:10px}
 .empty .acts{display:flex;gap:8px;flex-wrap:wrap}
 .dir{margin-bottom:6px}
+#plReorder.on{border-color:var(--accent);color:var(--accent)}

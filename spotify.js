@@ -139,6 +139,14 @@
     }
   }
 
+  // Move one track: the item at `from` goes in front of the item now at `before` (positions count from 0).
+  async function moveInPlaylist(playlistId, from, before, snapshot) {
+    const body = { range_start: from, insert_before: before, range_length: 1 };
+    if (snapshot) body.snapshot_id = snapshot;
+    const r = await api(`/playlists/${playlistId}/items`, { method: "PUT", body: JSON.stringify(body) });
+    return r && r.snapshot_id;
+  }
+
   async function createPlaylist(name, description, trackIds) {
     const pl = await api("/me/playlists", { method: "POST", body: JSON.stringify({ name, description, public: false }) });
     await addTracks(pl.id, trackIds);
@@ -272,7 +280,7 @@
   }
 
   window.Spotify = {
-    searchAll, searchTracks, getTrack, getAlbum, getArtist, transfer, setVolume,
+    searchAll, searchTracks, moveInPlaylist, getTrack, getAlbum, getArtist, transfer, setVolume,
     recentlyPlayed, playerState, upNext, seek, next, previous,
     canPlay, play, queue, pause, resume, nowPlaying, devices,
     login, handleRedirect, connected: () => !!store.get(), logout: () => store.clear(),

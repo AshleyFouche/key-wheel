@@ -125,7 +125,7 @@
       for (const it of (j.items || [])) {
         const t = it.item || it.track;
         if (!t || t.type === "episode" || !t.id) continue;
-        out.push({ id: t.id, title: t.name, artist: (t.artists || []).map(a => a.name).join(", "), uri: t.uri });
+        out.push({ id: t.id, title: t.name, artist: (t.artists || []).map(a => a.name).join(", "), uri: t.uri, duration: t.duration_ms || 0 });
       }
       url = j.next;
     }
@@ -253,8 +253,17 @@
     return { id: a.id, name: a.name, image: img(a.images), genres: a.genres || [], albums, albumsError: albums.length ? null : albumsError };
   }
 
+  // Search allows at most 10 results per request since February 2026.
+  async function searchTracks(title, artist) {
+    const run = async q => ((await api("/search?type=track&limit=10&q=" + encodeURIComponent(q))).tracks || {}).items || [];
+    let items = [];
+    try { items = await run(`track:${title} artist:${artist}`); } catch (e) {}
+    if (!items.length) items = await run(`${title} ${artist}`);
+    return items.filter(t => t && t.id).map(t => ({ id: t.id, title: t.name, artist: (t.artists || []).map(a => a.name).join(", "), duration: t.duration_ms || 0, album: t.album ? t.album.name : "" }));
+  }
+
   window.Spotify = {
-    getTrack, getAlbum, getArtist,
+    searchTracks, getTrack, getAlbum, getArtist,
     recentlyPlayed, playerState, upNext, seek, next, previous,
     canPlay, play, queue, pause, resume, nowPlaying, devices,
     login, handleRedirect, connected: () => !!store.get(), logout: () => store.clear(),

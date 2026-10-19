@@ -246,3 +246,15 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .pv-t:active,.pv-a:active{opacity:.6}
 .pv-a{text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
 #npTitle{cursor:pointer}
+
+/* match review */
+.mlist{display:grid;gap:8px}
+.mrow{display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;align-items:start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.mrow input{width:20px;height:20px;margin-top:2px}
+.mrow .ml{font-family:var(--mono);font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.mrow .mm{font-size:14px}
+.mrow .mm b{font-weight:600}
+.mrow .ms{font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.mrow.ok .ms{color:var(--good)} .mrow.warn .ms{color:var(--warn)} .mrow.miss .ms{color:#ff8a8a}
+.mrow.miss{opacity:.7}
+.pastebox{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}

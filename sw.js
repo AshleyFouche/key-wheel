@@ -1,5 +1,5 @@
 // Offline support: app files are cached; the library is fetched fresh when online and served from cache when not.
-const CACHE = "key-wheel-v16";
+const CACHE = "key-wheel-v17";
 const SHELL = ["./", "index.html", "app.css", "app.js", "spotify.js", "config.js", "library.json", "manifest.webmanifest", "icons/icon-192.png", "icons/apple-touch-icon.png"];
 
 self.addEventListener("install", e => {

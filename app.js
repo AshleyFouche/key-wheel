@@ -382,7 +382,9 @@
       paintSpotifyBtn();
     }
   }
+  let lastPlaylist = null;
   async function openPlaylist(p) {
+    lastPlaylist = p;
     const w = $("plWrap");
     w.innerHTML = `<button class="btn ghost back" id="plBack" type="button">‹ All playlists</button><h2>${esc(p.name)}</h2><p class="note">Loading tracks…</p>`;
     $("plBack").onclick = paintPlaylists;
@@ -390,10 +392,15 @@
       const tracks = await Spotify.playlistTracks(p.id);
       const recs = tracks.map(t => byId.get(t.id) || { id: t.id, title: t.title, artist: t.artist, tempo: 0, key: null });
       const known = recs.filter(r => r.key).length;
-      w.querySelector(".note").textContent = `${tracks.length} tracks · ${known} with a key in your library${known < tracks.length ? ` · ${tracks.length - known} still need one (send Claude a screen recording of this playlist in Mix view)` : ""}`;
+      w.querySelector(".note").textContent = `${tracks.length} tracks · ${known} with a key in your library${known < tracks.length ? ` · ${tracks.length - known} still need one: screenshot this playlist in Spotify's Mix view, send it to Claude, then tap Add keys` : ""}`;
       const acts = document.createElement("div"); acts.className = "crate-actions";
-      acts.innerHTML = '<button class="btn ghost" type="button" id="plAll">Add tracks with keys to crate</button>';
+      acts.innerHTML = '<button class="btn" type="button" id="plKeys">Add keys</button><button class="btn ghost" type="button" id="plAll">Add tracks with keys to crate</button>';
       w.appendChild(acts);
+      const pb = document.createElement("div"); pb.className = "pastebox"; pb.hidden = true;
+      pb.innerHTML = '<p class="note">Paste the lines Claude gave you for this playlist. They\'re matched to the exact tracks in it; anything not found here is searched on Spotify.</p><textarea id="plPaste" rows="6" placeholder="7B | 130 | Positive | Jamback | 2:49"></textarea><button class="btn" type="button" id="plMatch">Match</button>';
+      w.appendChild(pb);
+      $("plKeys").onclick = () => { pb.hidden = !pb.hidden; if (!pb.hidden) $("plPaste").focus(); };
+      $("plMatch").onclick = () => startMatch($("plPaste").value, tracks, "playlists");
       $("plAll").onclick = () => { recs.filter(r => r.key).forEach(r => { if (!crate.includes(r.id)) crate.push(r.id); }); saveCrate(); toast("Added to crate"); };
       const list = document.createElement("div"); list.className = "list";
       recs.forEach(t => list.appendChild(rowEl(t, null, setAnchor)));
@@ -426,25 +433,111 @@
     } catch (err) { toast("Couldn't restore: " + err.message); }
     e.target.value = "";
   };
-  $("addPaste").onclick = async () => {
-    const st = $("pasteStatus"); const extra = ls.get("kw.extra", []); const idx = new Map(extra.map((a, i) => [a[0], i]));
-    let added = 0, bad = 0;
-    $("paste").value.split(/\n+/).forEach(line => {
-      if (!line.trim()) return;
-      const parts = (line.includes("|") ? line.split("|") : line.split(/[,\t]/)).map(s => s.trim());
-      let id = (parts[0] || "").trim(); const m = id.match(/track[/:]([A-Za-z0-9]{22})/); if (m) id = m[1];
-      const key = normKey(parts[1]), tempo = Math.round(parseFloat(parts[2])) || 0;
-      if (!/^[A-Za-z0-9]{22}$/.test(id) || !key) { bad++; return; }
-      const prev = byId.get(id);
-      const rec = [id, parts[3] || prev?.title || "", parts.slice(4).join(", ") || prev?.artist || "", tempo, key, prev?.crate || "", prev?.euph ? 1 : 0, prev?.house ? 1 : 0];
-      if (idx.has(id)) extra[idx.get(id)] = rec; else { idx.set(id, extra.length); extra.push(rec); }
-      added++;
+  // ---------- adding keys: parse, match, review ----------
+  const normS = x => String(x || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+    .replace(/&/g, " and ").replace(/['’`]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const baseTitle = x => normS(String(x || "").split(/\s[-–]\s|\(|\[/)[0]);
+  const toks = x => new Set(normS(x).split(" ").filter(Boolean));
+  const artistSet = x => new Set(String(x || "").split(/,|&| x | and | feat\.? | ft\.? | with /i).map(normS).filter(Boolean));
+  function parseLen(x) { const m = String(x || "").trim().match(/^(\d{1,2}):(\d{2})$/); return m ? (parseInt(m[1]) * 60 + parseInt(m[2])) * 1000 : 0; }
+  function parseLines(text) {
+    const out = [];
+    text.split(/\n+/).forEach(raw => {
+      const line = raw.trim(); if (!line) return;
+      const parts = (line.includes("|") ? line.split("|") : line.split(/\t|,(?=\s*\S)/)).map(x => x.trim());
+      let id = null, m = (parts[0] || "").match(/track[/:]([A-Za-z0-9]{22})/);
+      if (m) id = m[1]; else if (/^[A-Za-z0-9]{22}$/.test(parts[0] || "")) id = parts[0];
+      if (id) { out.push({ raw: line, id, key: normKey(parts[1]), tempo: Math.round(parseFloat(parts[2])) || 0, title: parts[3] || "", artist: parts.slice(4).join(", ") }); return; }
+      // key | tempo | title | artist | length   (length optional)
+      let len = 0; if (parts.length >= 5 && parseLen(parts[parts.length - 1])) len = parseLen(parts.pop());
+      out.push({ raw: line, key: normKey(parts[0]), tempo: Math.round(parseFloat(parts[1])) || 0, title: parts[2] || "", artist: parts.slice(3).join(", "), len });
     });
+    return out;
+  }
+  function score(line, cand) {
+    const lt = normS(line.title), ct = normS(cand.title);
+    let t = lt && lt === ct ? 1 : (baseTitle(line.title) && baseTitle(line.title) === baseTitle(cand.title) ? 0.75 : 0);
+    if (!t) { const a = toks(line.title), b = toks(cand.title); const inter = [...a].filter(x => b.has(x)).length; t = inter ? 0.7 * inter / Math.max(a.size, b.size) : 0; }
+    const la = artistSet(line.artist), ca = artistSet(cand.artist);
+    let ar = [...la].some(x => ca.has(x)) ? 1 : 0;
+    if (!ar && la.size) { const a = toks(line.artist), b = toks(cand.artist); ar = [...a].some(x => b.has(x)) ? 0.5 : 0; }
+    let sc = t * 0.65 + ar * 0.35;
+    if (line.len && cand.duration) { const d = Math.abs(line.len - cand.duration); if (d <= 3000) sc += 0.15; else if (d > 15000) sc -= 0.25; }
+    return sc;
+  }
+  const CONF = 0.85, MAYBE = 0.55;
+  async function matchLines(lines, pool) {
+    const used = new Set(), results = [];
+    for (const ln of lines) {
+      const r = { line: ln, matches: [], status: "miss", source: "" };
+      if (!ln.key) { r.note = "No valid key (like 8A) in this line"; results.push(r); continue; }
+      if (ln.id) { r.matches = [{ id: ln.id, title: ln.title, artist: ln.artist }]; r.status = "ok"; r.source = "id"; results.push(r); continue; }
+      // 1. the playlist you screenshotted
+      if (pool && pool.length) {
+        let best = null, bs = 0;
+        pool.forEach(c => { if (used.has(c.id)) return; const sc = score(ln, c); if (sc > bs) { bs = sc; best = c; } });
+        if (best && bs >= MAYBE) { used.add(best.id); r.matches = [best]; r.status = bs >= CONF ? "ok" : "warn"; r.source = "playlist"; }
+      }
+      // 2. fall back to Spotify search
+      if (r.status !== "ok") {
+        try {
+          const found = await Spotify.searchTracks(ln.title, ln.artist);
+          const scored = found.map(c => ({ c, sc: score(ln, c) })).sort((a, b) => b.sc - a.sc);
+          if (scored.length && scored[0].sc >= MAYBE && (!r.matches.length || scored[0].sc > score(ln, r.matches[0]))) {
+            const top = scored[0];
+            // identical versions (same title, artist and length) all get the key
+            const twins = scored.filter(x => x.sc >= top.sc - 0.001 && normS(x.c.title) === normS(top.c.title) && Math.abs((x.c.duration || 0) - (top.c.duration || 0)) <= 2000);
+            r.matches = twins.map(x => x.c); r.status = top.sc >= CONF ? "ok" : "warn"; r.source = "search";
+          }
+        } catch (e) { if (!r.matches.length) r.note = "Search failed: " + e.message; }
+      }
+      results.push(r);
+    }
+    return results;
+  }
+  let matchResults = [], matchReturn = "more";
+  async function startMatch(text, pool, ret) {
+    const lines = parseLines(text);
+    if (!lines.length) { toast("Paste some lines first"); return; }
+    if (!Spotify.connected() && lines.some(l => !l.id)) { toast("Connect Spotify first so tracks can be found"); return; }
+    matchReturn = ret; go("match"); window.scrollTo(0, 0);
+    $("matchList").innerHTML = ""; $("matchStatus").textContent = ""; $("matchInfo").textContent = `Matching ${lines.length} tracks…`;
+    matchResults = await matchLines(lines, pool);
+    paintMatches();
+  }
+  const fmtLen = ms => { if (!ms) return ""; const sec = Math.floor(ms / 1000); return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); };
+  function paintMatches() {
+    const ok = matchResults.filter(r => r.status === "ok").length, warn = matchResults.filter(r => r.status === "warn").length, miss = matchResults.length - ok - warn;
+    $("matchInfo").textContent = `${ok} matched${warn ? `, ${warn} to check` : ""}${miss ? `, ${miss} not found` : ""}. Untick anything that looks wrong.`;
+    const box = $("matchList"); box.innerHTML = "";
+    matchResults.forEach((r, i) => {
+      const d = document.createElement("label"); d.className = "mrow " + r.status;
+      const label = r.status === "ok" ? "✓ " + (r.source === "playlist" ? "Found in playlist" : r.source === "search" ? "Found on Spotify" : "Spotify ID given")
+        : r.status === "warn" ? "⚠ Possible match — check it" : "✕ " + (r.note || "Not found");
+      const m = r.matches.map(x => `<b>${esc(x.title)}</b> · ${esc(x.artist)}${x.duration ? " · " + fmtLen(x.duration) : ""}${x.album ? " · " + esc(x.album) : ""}`).join("<br>");
+      if (r.checked === undefined) r.checked = r.status === "ok";
+      d.innerHTML = `<input type="checkbox" ${r.checked ? "checked" : ""} ${r.matches.length ? "" : "disabled"}><div><div class="ms">${label}${r.matches.length > 1 ? ` (${r.matches.length} identical versions)` : ""}</div><div class="ml">${esc(r.line.raw)}</div>${m ? `<div class="mm">→ ${m}</div>` : ""}</div>`;
+      d.querySelector("input").onchange = e => { r.checked = e.target.checked; };
+      box.appendChild(d);
+    });
+  }
+  $("matchBack").onclick = () => { go(matchReturn); window.scrollTo(0, 0); };
+  $("matchSave").onclick = async () => {
+    const extra = ls.get("kw.extra", []); const idx = new Map(extra.map((a, i) => [a[0], i]));
+    let n = 0;
+    matchResults.filter(r => r.checked && r.matches.length && r.line.key).forEach(r => r.matches.forEach(mt => {
+      const prev = byId.get(mt.id);
+      const rec = [mt.id, mt.title || r.line.title || prev?.title || "", mt.artist || r.line.artist || prev?.artist || "", r.line.tempo, r.line.key, prev?.crate || "", prev?.euph ? 1 : 0, prev?.house ? 1 : 0];
+      if (idx.has(mt.id)) extra[idx.get(mt.id)] = rec; else { idx.set(mt.id, extra.length); extra.push(rec); }
+      n++;
+    }));
     ls.set("kw.extra", extra); await loadLibrary(); crateOptions(); render(); paintMore();
-    st.className = "status " + (added ? "ok" : "err");
-    st.textContent = `${added} tracks added or updated${bad ? `, ${bad} lines skipped (need a Spotify track id and a key like 8A)` : ""}.`;
-    if (added) $("paste").value = "";
+    $("matchStatus").className = "status ok"; $("matchStatus").textContent = `Saved keys for ${n} tracks.`;
+    toast(`Saved keys for ${n} tracks`);
+    $("paste").value = "";
+    if (matchReturn === "playlists" && lastPlaylist) { go("playlists", true); openPlaylist(lastPlaylist); }
   };
+  $("addPaste").onclick = () => startMatch($("paste").value, null, "more");
 
   // ---------- playback + now playing ----------
   let np = null, follow = ls.get("kw.follow", false), npTimer = null, lastNpId = null;
@@ -857,18 +950,18 @@
   }
 
   // ---------- tabs + spotify button ----------
-  function go(v) {
+  function go(v, skipPaint) {
     document.querySelectorAll(".view").forEach(s => s.hidden = s.id !== "view-" + v);
-    const tabFor = v === "info" ? "more" : v === "browse" ? returnView : v;
+    const tabFor = v === "info" ? "more" : v === "browse" ? returnView : v === "match" ? matchReturn : v;
     document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === tabFor));
     document.body.classList.toggle("on-playing", v === "playing");
     if (v === "playing") { paintPlaying(); paintQueue(); if (Spotify.connected() && Spotify.canPlay()) startPolling(); }
     else if (typeof npTimer !== "undefined" && npTimer && Spotify.canPlay()) startPolling();
     if (v === "crate") paintCrate();
     if (v === "history") { paintHistory(); syncRecent(); }
-    if (v === "playlists") paintPlaylists();
+    if (v === "playlists" && !skipPaint) paintPlaylists();
     if (v === "more") paintMore();
-    if (v !== "browse" && v !== "info") { try { sessionStorage.setItem("kw.view", v); } catch (e) {} }
+    if (v !== "browse" && v !== "info" && v !== "match") { try { sessionStorage.setItem("kw.view", v); } catch (e) {} }
   }
   $("openInfo").onclick = () => { go("info"); window.scrollTo(0, 0); };
   $("infoBack").onclick = () => { go("more"); window.scrollTo(0, 0); };

@@ -80,6 +80,18 @@
     <div id="browseWrap"></div>
   </section>
 
+  <!-- MATCH REVIEW -->
+  <section class="view" id="view-match" hidden>
+    <button class="btn ghost back" id="matchBack" type="button">‹ Back</button>
+    <h2>Check the matches</h2>
+    <p class="note" id="matchInfo"></p>
+    <div id="matchList" class="mlist"></div>
+    <div class="save">
+      <button class="btn" id="matchSave" type="button">Save ticked tracks</button>
+      <p class="status" id="matchStatus" role="status"></p>
+    </div>
+  </section>
+
   <!-- CRATE -->
   <section class="view" id="view-crate" hidden>
     <h2>Crate in progress</h2>
@@ -192,7 +204,10 @@
       <ol>
         <li>Put the new tracks in one of your own Spotify playlists, open it on your phone and tap <b>Mix</b> so keys and tempos show.</li>
         <li>Screenshot the list as you scroll and send the screenshots to Claude.</li>
-        <li>Claude replies with lines of text. Copy them, go to <b>More → Add tracks</b>, paste and tap <b>Add to library</b>.</li>
+        <li>Claude replies with lines like <code>7B | 130 | Positive | Jamback | 2:49</code>. Copy them.</li>
+        <li>Open that playlist in the <b>Playlists</b> tab, tap <b>Add keys</b>, paste and tap <b>Match</b>. ASH//FLOW pairs each line with the exact track in the playlist. Anything it can't find there, it searches Spotify for, using the length to pick the right version.</li>
+        <li>Check the list: <b>✓</b> is a confident match, <b>⚠</b> needs a look (unticked until you tick it), <b>✕</b> wasn't found. Tap <b>Save ticked tracks</b>.</li>
+        <li>For tracks that aren't in a playlist, paste into <b>More → Add tracks</b> instead.</li>
       </ol>
     </details>
 
@@ -216,9 +231,9 @@
       <label class="btn ghost filebtn">Restore backup<input id="restore" type="file" accept="application/json,.json" hidden></label>
     </div>
     <h2>Add tracks</h2>
-    <p class="note">Paste the track list Claude gives you after reading your screen recording. One track per line: <code>spotify track id, key, tempo, title, artist</code>.</p>
-    <textarea id="paste" rows="6" placeholder="4anrLII28VHziHH8KuM9YF, 7A, 160, Spiritual Aura, DJ Rap"></textarea>
-    <button class="btn" id="addPaste" type="button">Add to library</button>
+    <p class="note">Best route: open the playlist in the <b>Playlists</b> tab and use <b>Add keys</b> there. Use this box for tracks that aren't in one of your playlists; ASH//FLOW searches Spotify to find them. One track per line: <code>key | tempo | title | artist | length</code>.</p>
+    <textarea id="paste" rows="6" placeholder="7B | 130 | Positive | Jamback | 2:49"></textarea>
+    <button class="btn" id="addPaste" type="button">Find tracks</button>
     <p class="status" id="pasteStatus" role="status"></p>
     <h2>Spotify</h2>
     <p class="note" id="spInfo"></p>

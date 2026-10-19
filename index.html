@@ -19,7 +19,7 @@
 </head>
 <body>
 <header class="top">
-  <div class="brand">ASH//<span class="fl">FLOW</span></div>
+  <div class="brand">ASH//<span class="fl">FLOW</span><span class="ver" id="appVer"></span></div>
   <button class="pill" id="spotifyBtn" type="button">Connect Spotify</button>
 </header>
 
@@ -135,6 +135,13 @@
   </section>
 
   <!-- PLAYLISTS -->
+  <!-- SEARCH -->
+  <section class="view" id="view-search" hidden>
+    <h2>Search Spotify</h2>
+    <input id="sq" type="search" placeholder="Any song or artist on Spotify" aria-label="Search Spotify" autocomplete="off" enterkeyhint="search">
+    <div id="sOut"></div>
+  </section>
+
   <section class="view" id="view-playlists" hidden>
     <h2>Your Spotify playlists</h2>
     <div id="plWrap"></div>
@@ -319,6 +326,7 @@
 </div>
 <nav class="tabs" aria-label="Sections">
   <button data-view="wheel" class="on" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>Wheel</button>
+  <button data-view="search" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>Search</button>
   <button data-view="playing" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l5.5-3.5z"/></svg>Playing</button>
   <button data-view="history" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/><path d="M12 8v4l3 2"/></svg>Flows</button>
   <button data-view="crate" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="16" height="13" rx="2"/><path d="M8 7V4h8v3"/></svg>Crate <span class="badge" id="crateBadge" hidden></span></button>

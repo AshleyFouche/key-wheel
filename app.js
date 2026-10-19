@@ -135,7 +135,9 @@
   // ---------- where to find a track ----------
   const plShort = n => String(n || "").replace(/^ASH\/\/F\s*/, "").replace(/\s·\s[\d–-]+\s*★*$/, "").replace(/\s*★+$/, "");
   function whereHtml(t) {
-    if (!t || (!t.src.length && !t.crates.length)) return "";
+    if (!t) return "";
+    t = { src: t.src || [], crates: t.crates || [] };
+    if (!t.src.length && !t.crates.length) return "";
     const chip = id => `<button type="button" class="wchip" data-pl="${esc(id)}">${esc(plShort(PL[id] || "Playlist"))}</button>`;
     return `<div class="where">${t.src.length ? `<div class="wrow"><span class="wl">Found in</span>${t.src.map(chip).join("")}</div>` : ""}${t.crates.length ? `<div class="wrow"><span class="wl">Crate</span>${t.crates.map(chip).join("")}</div>` : ""}</div>`;
   }
@@ -450,6 +452,70 @@
   }
 
   // ---------- more ----------
+  // ---------- version ----------
+  // Bump with each release so it's clear which build the phone is running.
+  const APP_VERSION = "1.4";
+  $("appVer").textContent = "beta " + APP_VERSION;
+
+  // ---------- search the whole Spotify catalogue ----------
+  let sTimer = 0, sSeq = 0, sState = { q: "", items: [], offset: 0, next: false, total: 0, err: "" };
+  const sPick = t => t.key ? setAnchor(t) : openMenu(t);
+  function sRec(it) {
+    const r = byId.get(it.id);
+    return r ? Object.assign({}, r, { art: it.art }) : { id: it.id, title: it.title, artist: it.artist, tempo: 0, key: null, art: it.art, album: it.album };
+  }
+  function paintSearch() {
+    const out = $("sOut"), q = sState.q;
+    out.innerHTML = "";
+    if (!q) { out.innerHTML = '<p class="note">Type a song or artist. Tracks already in your library show their key; anything else you can still play, queue or add to your crate. Tap a track with no key for options.</p>'; return; }
+    const qq = q.toLowerCase(), words = qq.split(/\s+/).filter(Boolean);
+    const lib = T.filter(t => { const h = (t.title + " " + t.artist).toLowerCase(); return words.every(w => h.includes(w)); }).slice(0, 5);
+    if (lib.length) {
+      out.insertAdjacentHTML("beforeend", '<div class="eyebrow shead">In your library</div>');
+      const l = document.createElement("div"); l.className = "list"; lib.forEach(t => l.appendChild(rowEl(t, null, sPick, state.anchor))); out.appendChild(l);
+    }
+    out.insertAdjacentHTML("beforeend", `<div class="eyebrow shead">On Spotify${sState.total ? " · " + sState.total.toLocaleString() + " results" : ""}</div>`);
+    if (!Spotify.connected()) { out.insertAdjacentHTML("beforeend", '<p class="note">Connect Spotify (top right) to search everything.</p>'); return; }
+    if (sState.err) { out.insertAdjacentHTML("beforeend", `<p class="note">${esc(sState.err)}</p>`); return; }
+    if (sState.loading && !sState.items.length) { out.insertAdjacentHTML("beforeend", '<p class="note">Searching…</p>'); return; }
+    if (!sState.items.length) { out.insertAdjacentHTML("beforeend", '<p class="note">Nothing found.</p>'); return; }
+    const l = document.createElement("div"); l.className = "list";
+    sState.items.forEach(it => {
+      const t = sRec(it), r = rowEl(t, null, sPick, state.anchor);
+      if (!t.key) r.querySelector(".tt .a").insertAdjacentHTML("beforeend", ' <span class="nokey">· not in library</span>');
+      if (it.album) r.querySelector(".tt .a").title = it.album;
+      l.appendChild(r);
+    });
+    out.appendChild(l);
+    if (sState.next) {
+      const b = document.createElement("button"); b.className = "btn ghost smore"; b.type = "button"; b.textContent = sState.loading ? "Loading…" : "More results";
+      b.onclick = () => runSearch(true); out.appendChild(b);
+    }
+  }
+  async function runSearch(more) {
+    const q = sState.q, seq = ++sSeq;
+    if (!q || !Spotify.connected()) { paintSearch(); return; }
+    if (!more) sState = { q, items: [], offset: 0, next: false, total: 0, err: "" };
+    sState.loading = true; paintSearch();
+    try {
+      const r = await Spotify.searchAll(q, more ? sState.items.length : 0);
+      if (seq !== sSeq) return;
+      const have = new Set(sState.items.map(i => i.id));
+      sState.items = sState.items.concat(r.items.filter(i => !have.has(i.id)));
+      sState.next = r.next && r.items.length > 0 && sState.items.length < 200; sState.total = r.total;
+    } catch (e) {
+      if (seq !== sSeq) return;
+      if (more) sState.next = false; else sState.err = e.code === "auth" ? "Spotify sign-in expired. Tap Connect Spotify." : "Search didn't work: " + e.message;
+    }
+    sState.loading = false; paintSearch();
+  }
+  $("sq").addEventListener("input", () => {
+    clearTimeout(sTimer);
+    sState.q = $("sq").value.trim();
+    sTimer = setTimeout(() => runSearch(false), 350);
+  });
+  $("sq").addEventListener("keydown", e => { if (e.key === "Enter") { clearTimeout(sTimer); $("sq").blur(); runSearch(false); } });
+
   function paintMore() {
     const extra = ls.get("kw.extra", []);
     $("libInfo").textContent = `${T.length.toLocaleString()} tracks with keys (${extra.length} added on this phone). Your crate, settings and added tracks are stored on this phone; back them up now and then.`;
@@ -1243,6 +1309,7 @@
     if (v === "playing") { paintPlaying(); paintQueue(); paintSuggest(); if (Spotify.connected() && Spotify.canPlay()) startPolling(); }
     else if (typeof npTimer !== "undefined" && npTimer && Spotify.canPlay()) startPolling();
     if (v === "crate") paintCrate();
+    if (v === "search") paintSearch();
     if (v === "history") { paintHistory(); syncRecent(); }
     if (v === "playlists" && !skipPaint) paintPlaylists();
     if (v === "more") paintMore();

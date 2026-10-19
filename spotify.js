@@ -265,8 +265,14 @@
     return items.filter(t => t && t.id).map(t => ({ id: t.id, title: t.name, artist: (t.artists || []).map(a => a.name).join(", "), duration: t.duration_ms || 0, album: t.album ? t.album.name : "" }));
   }
 
+  // Free search across the whole Spotify catalogue. Spotify returns at most 10 per page.
+  async function searchAll(q, offset = 0) {
+    const r = (await api(`/search?type=track&limit=10&offset=${offset}&q=` + encodeURIComponent(q))).tracks || {};
+    return { total: r.total || 0, next: !!r.next, items: (r.items || []).filter(t => t && t.id).map(t => ({ id: t.id, title: t.name, artist: (t.artists || []).map(a => a.name).join(", "), album: t.album ? t.album.name : "", art: t.album && t.album.images && t.album.images.length ? t.album.images[t.album.images.length - 1].url : "", duration: t.duration_ms || 0 })) };
+  }
+
   window.Spotify = {
-    searchTracks, getTrack, getAlbum, getArtist, transfer, setVolume,
+    searchAll, searchTracks, getTrack, getAlbum, getArtist, transfer, setVolume,
     recentlyPlayed, playerState, upNext, seek, next, previous,
     canPlay, play, queue, pause, resume, nowPlaying, devices,
     login, handleRedirect, connected: () => !!store.get(), logout: () => store.clear(),

@@ -512,7 +512,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.2";
+  const APP_VERSION = "2.3";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -696,15 +696,25 @@
   }
   const fmtLen = ms => { if (!ms) return ""; const sec = Math.floor(ms / 1000); return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); };
   function paintMatches() {
-    const ok = matchResults.filter(r => r.status === "ok").length, warn = matchResults.filter(r => r.status === "warn").length, miss = matchResults.length - ok - warn;
-    $("matchInfo").textContent = `${ok} matched${warn ? `, ${warn} to check` : ""}${miss ? `, ${miss} not found` : ""}. Untick anything that looks wrong.`;
+    // Compare with what's already saved: same key and BPM → nothing to do; different → it'll be updated.
+    matchResults.forEach(r => {
+      if (r.prior !== undefined) return;
+      const ex = r.matches.map(m => byId.get(m.id)).filter(x => x && x.key);
+      r.prior = !ex.length ? null : ex.every(x => x.key === r.line.key && (!r.line.tempo || x.tempo === r.line.tempo)) ? "same" : ex[0];
+    });
+    const same = matchResults.filter(r => r.prior === "same").length;
+    const ok = matchResults.filter(r => r.status === "ok" && r.prior !== "same").length, warn = matchResults.filter(r => r.status === "warn" && r.prior !== "same").length, miss = matchResults.filter(r => !r.matches.length).length;
+    $("matchInfo").textContent = `${ok} matched${warn ? `, ${warn} possible` : ""}${same ? `, ${same} already saved` : ""}${miss ? `, ${miss} not found` : ""}. Untick anything that looks wrong.`;
     const box = $("matchList"); box.innerHTML = "";
     matchResults.forEach((r, i) => {
-      const d = document.createElement("label"); d.className = "mrow " + r.status;
-      const label = r.status === "ok" ? "✓ " + (r.source === "playlist" ? "Found in playlist" : r.source === "search" ? "Found on Spotify" : "Spotify ID given")
+      const d = document.createElement("label"); d.className = "mrow " + r.status + (r.prior === "same" ? " same" : "");
+      let label = r.status === "ok" ? "✓ " + (r.source === "playlist" ? "Found in playlist" : r.source === "search" ? "Found on Spotify" : "Spotify ID given")
         : r.status === "warn" ? "⚠ Possible match — check it" : "✕ " + (r.note || "Not found");
+      if (r.prior === "same") label = `= Already saved as ${r.line.key}${r.line.tempo ? " · " + r.line.tempo + " BPM" : ""} — no change`;
+      else if (r.prior) label += ` · updates ${r.prior.key}${r.prior.tempo ? " · " + r.prior.tempo : ""} → ${r.line.key}${r.line.tempo ? " · " + r.line.tempo : ""}`;
       const m = r.matches.map(x => `<b>${esc(x.title)}</b> · ${esc(x.artist)}${x.duration ? " · " + fmtLen(x.duration) : ""}${x.album ? " · " + esc(x.album) : ""}`).join("<br>");
-      if (r.checked === undefined) r.checked = r.status === "ok";
+      // Matches and possible matches start ticked; ones with nothing new to save start unticked.
+      if (r.checked === undefined) r.checked = (r.status === "ok" || r.status === "warn") && r.prior !== "same";
       d.innerHTML = `<input type="checkbox" ${r.checked ? "checked" : ""} ${r.matches.length ? "" : "disabled"}><div><div class="ms">${label}${r.matches.length > 1 ? ` (${r.matches.length} identical versions)` : ""}</div><div class="ml">${esc(r.line.raw)}</div>${m ? `<div class="mm">→ ${m}</div>` : ""}</div>`;
       d.querySelector("input").onchange = e => { r.checked = e.target.checked; };
       box.appendChild(d);

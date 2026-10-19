@@ -195,10 +195,19 @@
     // Same order as before 1.18 (active, phone, then whatever Spotify lists first), but the device last seen playing wins.
     return ds.find(d => d.is_active) || (last && ok.find(d => d.id === last)) || ok.find(d => d.type === "Smartphone") || ok.find(d => d.type === "Automobile") || ok[0] || ds[0] || null;
   }
+  // When nothing is playing, the app can ask the person which device to use instead of guessing.
+  let chooser = null;
   async function withDevice(fn) {
     try { return await fn(null); }
     catch (e) {
-      if (e.status !== 404) throw e;           // 404 = no active device; wake the best available one
+      if (e.status !== 404) throw e;           // 404 = no active device
+      if (chooser) {
+        // Google Cast speakers can't be started by other apps, so leave them out.
+        const ds = (await devices()).filter(x => !x.is_restricted && !/^Cast/.test(x.type || ""));
+        const pick = ds.length === 1 ? ds[0] : await chooser(ds, localStorage.getItem("kw.lastDevice"));
+        if (pick === "cancel") { const c = new Error("Cancelled"); c.code = "cancel"; throw c; }
+        if (pick) return fn(pick.id);
+      }
       const d = await pickDevice();
       if (!d) {
         const seen = (await devices().catch(() => [])).map(x => `${x.name} (${x.type}${x.is_restricted ? ", locked" : ""})`);
@@ -326,6 +335,7 @@
     searchAll, searchTracks, moveInPlaylist, getTrack, getAlbum, getArtist, transfer, setVolume,
     recentlyPlayed, playerState, upNext, seek, next, previous,
     log: () => LOG.slice(), rawPlayer: () => api("/me/player"),
+    setDeviceChooser: f => { chooser = f; },
     liveAdd, liveRemove, liveMove, liveReplace, playPlaylist,
     canPlay, play, playContext, playList, setShuffle, queue, pause, resume, nowPlaying, devices,
     login, handleRedirect, connected: () => !!store.get(), logout: () => store.clear(),

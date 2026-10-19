@@ -511,7 +511,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.23";
+  const APP_VERSION = "1.24";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -581,7 +581,7 @@
     try {
       const p = await Spotify.rawPlayer();
       if (!p || !p.device) lines.push("NOW: Spotify reports nothing playing and no active device.");
-      else lines.push(`NOW: ${p.is_playing ? "playing" : "paused"} "${p.item ? p.item.name : "?"}" on ${p.device.name} (${p.device.type}${p.device.is_restricted ? ", LOCKED — Spotify won't take commands for it" : ""}${p.device.is_private_session ? ", private session" : ""}) · context: ${p.context ? p.context.type : "single track"}`);
+      else lines.push(`NOW: ${p.is_playing ? "playing" : "paused"} "${p.item ? p.item.name : "?"}" on ${p.device.name} (${p.device.type}${p.device.is_restricted ? ", LOCKED — Spotify won't take commands for it" : ""}${p.device.is_private_session ? ", private session" : ""}) · context: ${p.context ? p.context.type + (live.pl && p.context.uri === "spotify:playlist:" + live.pl ? " (your Live set)" : "") : "single track"}`);
     } catch (e) { lines.push("NOW: couldn't ask Spotify — " + e.message); }
     try {
       const ds = await Spotify.devices();
@@ -589,6 +589,7 @@
       ds.forEach(d => lines.push(`  • ${d.name} — ${d.type}${d.is_active ? ", ACTIVE" : ""}${d.is_restricted ? ", LOCKED" : ""} · id …${(d.id || "").slice(-6)}`));
     } catch (e) { lines.push("DEVICES: couldn't ask Spotify — " + e.message); }
     let last = ""; try { last = localStorage.getItem("kw.lastDevice") || ""; } catch (e) {}
+    lines.push("Live set: " + (liveOn ? "on" : "off") + (live.pl ? " · playlist …" + live.pl.slice(-6) + " · " + live.items.length + " tracks, playing #" + (live.cur + 1) : " · not started yet"));
     lines.push("Last device ASH//FLOW saw playing: " + (last ? "id …" + last.slice(-6) : "none yet"));
     const log = Spotify.log();
     lines.push("RECENT COMMANDS (newest last): " + (log.length ? "" : "none yet"));
@@ -772,7 +773,24 @@
       setTimeout(pollNow, 900);
     } catch (e) { playError(e); }
   }
+  // "Where should this play?" — shown when Spotify has no active device, instead of guessing one.
+  Spotify.setDeviceChooser((ds, last) => new Promise(resolve => {
+    const rank = d => (d.type === "Smartphone" ? 0 : d.id === last ? 1 : 2);
+    ds = ds.slice().sort((a, b) => rank(a) - rank(b));
+    const sh = $("sheet");
+    sh.innerHTML = `<div class="grab"></div><div class="sh-t">Where should this play?</div><div class="sh-a">Nothing is playing on Spotify right now.</div>` +
+      ds.map((d, i) => `<button class="item" data-i="${i}" type="button"><span>${devIcon(d.type)}</span>${esc(d.name)}${d.id === last ? ' <small class="muted">· last used</small>' : ""}</button>`).join("") +
+      (ds.length ? "" : '<p class="note">Spotify can\'t see any devices. Open the Spotify app on your phone, then try again.</p>') +
+      '<button class="item" data-i="x" type="button"><span>✕</span>Cancel</button>';
+    sh.hidden = false; $("sheetBg").hidden = false;
+    let done = false;
+    const finish = v => { if (done) return; done = true; sh.hidden = true; $("sheetBg").hidden = true; $("sheetBg").removeEventListener("click", bg); resolve(v); };
+    const bg = () => finish("cancel");
+    $("sheetBg").addEventListener("click", bg);
+    sh.querySelectorAll("[data-i]").forEach(b => b.onclick = () => finish(b.dataset.i === "x" ? "cancel" : ds[+b.dataset.i]));
+  }));
   function playError(e) {
+    if (e.code === "cancel") return;
     if (e.code === "auth") { toast("Spotify sign-in expired. Tap Connect Spotify."); paintSpotifyBtn(); return; }
     if (e.code === "nodevice") { toast(e.message, 5000); return; }
     if (e.status === 403) { toast("Spotify refused: playback needs Premium and an active Spotify app.", 5000); return; }

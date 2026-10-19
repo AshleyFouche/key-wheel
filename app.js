@@ -666,8 +666,10 @@
     try {
       const ds = await Spotify.devices();
       if (!ds.length) { sh.querySelector(".sh-a").textContent = "No devices found. Open Spotify on your phone or another device, then try again."; return; }
-      sh.innerHTML = '<div class="grab"></div><div class="sh-t">Play on</div><div class="sh-a">Spotify only lists devices that are switched on and have used Spotify recently.</div>' +
-        ds.map((d, i) => `<button class="item dev${d.is_active ? " on" : ""}" type="button" data-i="${i}"><span>${devIcon(d.type)}</span><div><div>${esc(d.name)}${d.is_active ? " · playing" : ""}</div><small>${esc(devHint(d))}</small></div></button>`).join("");
+      sh.innerHTML = '<div class="grab"></div><div class="sh-t">Play on</div>' +
+        ds.map((d, i) => `<button class="item dev${d.is_active ? " on" : ""}" type="button" data-i="${i}"><span>${devIcon(d.type)}</span><div><div>${esc(d.name)}${d.is_active ? " · playing" : ""}</div><small>${esc(devHint(d))}</small></div></button>`).join("") +
+        `<div class="devhelp"><b>Missing a device?</b><br>Your iPhone: open the Spotify app for a few seconds, then tap Refresh.<br>Google, Nest or Chromecast speakers: Spotify only lets other apps see these once a session has started on them, so pick it once in the Spotify app; after that you can switch to and from it here.</div><button class="item" type="button" id="devRefresh"><span>↻</span>Refresh</button>`;
+      $("devRefresh").onclick = () => $("pvDevice").click();
       sh.querySelectorAll("[data-i]").forEach(b => b.onclick = async () => {
         const d = ds[parseInt(b.dataset.i)];
         closeMenu();

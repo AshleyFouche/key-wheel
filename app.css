@@ -278,3 +278,6 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .sheet .item.dev{align-items:flex-start}
 .sheet .item.dev small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
 .sheet .item.dev.on{color:var(--good)}
+
+.devhelp{font-size:13px;color:var(--muted);line-height:1.5;border-top:1px solid var(--line);padding:12px 2px}
+.devhelp b{color:var(--ink)}

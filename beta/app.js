@@ -1675,7 +1675,7 @@
   function copyFromStable() {
     let n = 0;
     try { FROM_STABLE.forEach(k => { const v = localStorage.getItem("kw." + k); if (v != null) { localStorage.setItem("kwb." + k, v); n++; } }); localStorage.setItem("kwb.importAsked", "1"); } catch (e) {}
-    toast(n ? "Copied from stable — reloading" : "Nothing to copy from stable yet");
+    toast(n ? "Copied from stable — reloading" : "Can't see stable's data from here. On iPhone, each home-screen app keeps its own storage: use More → Back up in stable, then Restore here.", 7000);
     if (n) setTimeout(() => location.reload(), 800);
   }
   $("fromStable").onclick = copyFromStable;

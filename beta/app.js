@@ -591,7 +591,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.7";
+  const APP_VERSION = "2.8";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1150,7 +1150,8 @@
   // ---------- Live set ----------
   // Spotify plays from a private playlist, "ASH//FLOW Live", which the app edits. Everything after the
   // playing track IS your queue, so tracks can be inserted, moved and removed — no skipping, no blips.
-  let liveOn = ls.get("kwb.liveOn", true);
+  // The Live set is retired: Spotify's players don't reliably follow playlist edits. The plain queue is used instead.
+  let liveOn = false;
   let live = ls.get("kwb.live", { pl: null, items: [], cur: -1 });
   const saveLive = () => ls.set("kwb.live", live);
   $("liveTog").checked = liveOn;
@@ -1252,9 +1253,14 @@
     toast("Up next: " + title);
   }
 
-  async function pump() {
+  // Hand the next track to Spotify only in the last 15 seconds of the current one (or straight away if nothing
+  // is playing, or the app is being closed). Until then Spotify's own queue stays empty, so "play now" can
+  // queue a track and skip straight to it, with nothing in between.
+  const HANDOVER_MS = 15000;
+  async function pump(force) {
     if (isLive()) return;
     if (pumping || handed || !appQ.length || !Spotify.connected() || !Spotify.canPlay()) return;
+    if (!force && np && np.playing && np.duration && np.duration - posNow() > HANDOVER_MS && document.visibilityState === "visible") return;
     pumping = true;
     const id = appQ[0];
     try { await Spotify.queue(id); appQ.shift(); handed = id; saveQ(); }
@@ -1758,6 +1764,10 @@
   $("autoTog2").checked = autoPick;
   $("autoTog2").onchange = () => setAuto($("autoTog2").checked);
   setInterval(paintHeads, 1000);
+  setInterval(() => { if (appQ.length && !handed) pump(); }, 1000);
+  // Leaving the app (locking the phone, switching apps): hand the next track over now, while we still can.
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") pump(true); });
+  window.addEventListener("pagehide", () => pump(true));
 
   // ---------- Suggested next on the Playing tab ----------
   function paintSuggest() {

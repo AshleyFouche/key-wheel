@@ -190,8 +190,7 @@
         <li><b>Key clash</b> in amber, in your queue, means that transition breaks the rules. It might still work over a drum break, but listen first.</li>
         <li><b>?</b> means the track has no key in your library yet.</li>
         <li><b class="gmem">★ Played after this</b> in green means you've gone from the track you're mixing out of into that one before, in a flow or a crate you saved. Those float to the top.</li>
-        <li><b>Live set:</b> when you play a track, Spotify plays from a private playlist called <b>ASH//FLOW Live</b>. Everything after the playing track is your queue, so you can play something next, reorder or remove tracks, and nothing gets skipped. Turn it off on the More tab.</li>
-        <li><b>✎</b> next to a title means you've left yourself a note on it. Add one from the <b>⋯</b> menu.</li>
+                <li><b>✎</b> next to a title means you've left yourself a note on it. Add one from the <b>⋯</b> menu.</li>
       </ul>
       <h3>Direction</h3>
       <p>The <b>Direction</b> switch under the wheel tells the app where you want the night to go. <b>Build</b> favours a few BPM up, energy boosts and minor to major. <b>Hold</b> keeps BPM and key close. <b>Cool</b> favours BPM down and major to minor, and avoids boosts. <b>Any</b> just ranks by closest key and BPM. It only changes the <b>order</b> of the wheel list and the suggestions on the Playing tab, never how many tracks you see. It works from the track you're mixing out of, and each row shows the BPM change from it (like <b>+3</b>). Each flow on the Flows tab has a BPM chart so you can see the shape of the night afterwards.</p>
@@ -303,7 +302,7 @@
     <p class="note" id="spInfo"></p>
     <p class="note">This is the <b>beta</b>. New features land here first. It keeps its own crate, notes, flows and Live set, separate from your stable ASH//FLOW.</p>
     <div class="crate-actions"><button class="btn ghost" id="fromStable" type="button">Copy my data from stable</button></div>
-    <label class="check"><input id="liveTog" type="checkbox"> <span><b>Live set</b> (recommended). Spotify plays from a private playlist called “ASH//FLOW Live” that the app edits as you queue, so tracks can be played next, moved or removed without skipping.</span></label>
+    <input id="liveTog" type="checkbox" hidden>
     <div class="crate-actions"><button class="btn" id="connCheck" type="button">Connection check</button><button class="btn ghost" id="logout" type="button">Disconnect Spotify</button></div>
     <div id="connOut" hidden></div>
     <h2>About the keys</h2>

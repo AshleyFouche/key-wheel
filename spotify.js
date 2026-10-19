@@ -181,7 +181,8 @@
     id: t.id, title: t.name, artist: (t.artists || []).map(a => a.name).join(", "),
     art: t.album && t.album.images && t.album.images.length ? t.album.images[t.album.images.length - 1].url : "",
     artLarge: t.album && t.album.images && t.album.images.length ? t.album.images[0].url : "",
-    album: t.album ? t.album.name : "", duration: t.duration_ms || 0
+    album: t.album ? t.album.name : "", albumId: t.album ? t.album.id : null,
+    artists: (t.artists || []).map(x => ({ id: x.id, name: x.name })), duration: t.duration_ms || 0
   } : null;
   async function playerState() {
     const j = await api("/me/player");
@@ -223,16 +224,20 @@
   }
   async function getArtist(id) {
     const a = await api("/artists/" + id);
-    // Spotify now rejects large page sizes here, so fetch 10 at a time (up to 50 releases).
-    let items = [], next = `/artists/${id}/albums?include_groups=album,single,compilation&limit=10`;
-    for (let i = 0; next && i < 5; i++) {
-      try { const j = await api(next); items = items.concat(j.items || []); next = j.next; }
-      catch (e) { if (!items.length && /limit/i.test(e.message)) { next = `/artists/${id}/albums?include_groups=album,single,compilation`; continue; } break; }
+    // Spotify has tightened page sizes on this endpoint; try smaller requests until one is accepted.
+    const base = `/artists/${id}/albums?include_groups=album,single`;
+    let items = [], albumsError = null;
+    for (const first of [base + "&limit=10", base + "&limit=5", base, `/artists/${id}/albums`]) {
+      try {
+        let next = first; items = [];
+        for (let i = 0; next && i < 5; i++) { const j = await api(next); items = items.concat(j.items || []); next = j.next; }
+        albumsError = null; break;
+      } catch (e) { albumsError = e.message; if (items.length) break; }
     }
     const seen = new Set();
-    const albums = items.filter(x => { const k = (x.name || "").toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+    const albums = items.filter(x => x && x.id).filter(x => { const k = (x.name || "").toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
       .map(x => ({ id: x.id, name: x.name, image: img(x.images), year: (x.release_date || "").slice(0, 4), type: x.album_type }));
-    return { id: a.id, name: a.name, image: img(a.images), genres: a.genres || [], albums };
+    return { id: a.id, name: a.name, image: img(a.images), genres: a.genres || [], albums, albumsError: albums.length ? null : albumsError };
   }
 
   window.Spotify = {

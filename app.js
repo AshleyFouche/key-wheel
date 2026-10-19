@@ -560,6 +560,9 @@
   $("pvPP").onclick = () => $("npPP").click();
   $("pvPrev").onclick = async () => { try { await Spotify.previous(); setTimeout(pollNow, 700); } catch (e) { playError(e); } };
   $("pvNext").onclick = async () => { try { await Spotify.next(); setTimeout(pollNow, 700); } catch (e) { playError(e); } };
+  $("pvTitle").onclick = () => { if (np && np.albumId) openAlbum(np.albumId); };
+  $("pvArtist").onclick = () => { if (np) chooseArtist(np.artists); };
+  $("npTitle").onclick = () => { if (np) { go("playing"); window.scrollTo(0, 0); } };
   $("pvMix").onclick = () => { const rec = np && byId.get(np.id); if (rec && rec.key) setAnchor(rec); };
   // ---------- ASH//FLOW queue ----------
   // Spotify lets apps add to its queue but never remove, so the queue lives here.
@@ -699,9 +702,9 @@
       if (!needSpotify()) return;
       try {
         const d = await Spotify.getTrack(t.id);
-        if (d.artists.length === 1) { closeMenu(); openArtist(d.artists[0].id); return; }
+        if (d.artists.length === 1) { closeMenu(); openArtist(d.artists[0].id, d.artists[0].name); return; }
         sh.innerHTML = '<div class="grab"></div><div class="sh-t">Which artist?</div>' + d.artists.map(a => `<button class="item" type="button" data-id="${esc(a.id)}"><span>👤</span>${esc(a.name)}</button>`).join("");
-        sh.querySelectorAll("[data-id]").forEach(b => b.onclick = () => { closeMenu(); openArtist(b.dataset.id); });
+        sh.querySelectorAll("[data-id]").forEach(b => b.onclick = () => { closeMenu(); openArtist(b.dataset.id, b.textContent.trim()); });
       } catch (e) { closeMenu(); toast("Couldn't load the artist"); }
     };
   }
@@ -720,7 +723,15 @@
     if (browseStack.length) { renderBrowse(); window.scrollTo(0, 0); } else { go(returnView); window.scrollTo(0, 0); }
   };
   const openAlbum = id => showBrowse({ type: "album", id });
-  const openArtist = id => showBrowse({ type: "artist", id });
+  const openArtist = (id, name) => showBrowse({ type: "artist", id, name });
+  function chooseArtist(artists) {
+    if (!artists || !artists.length) return;
+    if (artists.length === 1) { openArtist(artists[0].id, artists[0].name); return; }
+    const sh = $("sheet");
+    sh.innerHTML = '<div class="grab"></div><div class="sh-t">Which artist?</div>' + artists.map(a => `<button class="item" type="button" data-id="${esc(a.id)}"><span>👤</span>${esc(a.name)}</button>`).join("");
+    sh.hidden = false; $("sheetBg").hidden = false;
+    sh.querySelectorAll("[data-id]").forEach(b => b.onclick = () => { closeMenu(); openArtist(b.dataset.id, b.textContent.trim()); });
+  }
   async function renderBrowse() {
     const w = $("browseWrap"), page = browseStack[browseStack.length - 1];
     w.innerHTML = '<p class="note">Loading…</p>';
@@ -739,7 +750,8 @@
         w.appendChild(list);
         $("bAllQ").onclick = () => { const ks = a.tracks.map(t => byId.get(t.id)).filter(r => r && r.key); if (!ks.length) { toast("None of these have a key yet"); return; } ks.forEach(r => appQ.push(r.id)); saveQ(); pump(); toast(`Queued ${ks.length} tracks`); };
       } else {
-        const a = page.data || (page.data = await Spotify.getArtist(page.id));
+        let a = page.data;
+        if (!a) { try { a = page.data = await Spotify.getArtist(page.id); } catch (e) { a = { id: page.id, name: page.name || "Artist", image: "", genres: [], albums: [], albumsError: e.message }; } }
         const name = a.name.toLowerCase();
         const mine = T.filter(t => t.artist.toLowerCase().split(/,\s*/).includes(name) || t.artist.toLowerCase() === name);
         w.innerHTML = `<div class="bhead artist"><div class="bimg" style="background-image:url('${esc(a.image)}')"></div><div><div class="bt">${esc(a.name)}</div>
@@ -752,6 +764,7 @@
           w.appendChild(list);
         }
         const h2 = document.createElement("h2"); h2.textContent = "Releases"; w.appendChild(h2);
+        if (!a.albums.length) { const n = document.createElement("p"); n.className = "note"; n.textContent = a.albumsError ? "Spotify wouldn't send this artist's releases (" + a.albumsError + "). Use Open in Spotify to see them." : "No releases found."; w.appendChild(n); }
         const g = document.createElement("div"); g.className = "albums";
         a.albums.forEach(al => {
           const b = document.createElement("button"); b.type = "button"; b.className = "alb";

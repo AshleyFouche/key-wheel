@@ -511,7 +511,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.17";
+  const APP_VERSION = "1.18";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -757,7 +757,11 @@
   async function pollNow() {
     if (!Spotify.connected() || !Spotify.canPlay() || document.visibilityState !== "visible") return;
     try {
-      np = await Spotify.playerState();
+      const fresh = await Spotify.playerState();
+      // Spotify briefly reports "nothing playing" between tracks or when the phone's connection blips.
+      // Keep showing the last track unless it has said so for 12 seconds straight.
+      if (fresh) { emptySince = 0; np = fresh; }
+      else { if (!emptySince) emptySince = Date.now(); if (!np || Date.now() - emptySince >= 12000) np = null; }
       if (np && np.progress >= 30000 && loggedFor !== np.id) { loggedFor = np.id; addHistory([{ id: np.id, title: np.title, artist: np.artist, at: np.at - np.progress, src: "app" }]); }
       if (Date.now() - lastRecentSync > 120000) syncRecent();
       if (np && handed && np.id === handed) { handed = null; saveQ(); }
@@ -770,6 +774,7 @@
       paintNp(); paintPlaying(); pump();
     } catch (e) { if (e.code === "auth") paintSpotifyBtn(); }
   }
+  let emptySince = 0;
   function startPolling() {
     clearInterval(npTimer); pollNow();
     npTimer = setInterval(pollNow, !$("view-playing").hidden ? 3000 : 5000);
@@ -819,7 +824,25 @@
   });
   $("pvPP").onclick = () => $("npPP").click();
   $("pvPrev").onclick = async () => { try { await Spotify.previous(); setTimeout(pollNow, 700); } catch (e) { playError(e); } };
-  $("pvNext").onclick = async () => { try { await Spotify.next(); setTimeout(pollNow, 700); } catch (e) { playError(e); } };
+  // Next: if Spotify has nothing lined up, skipping would just stop the music, so play something instead.
+  async function smartNext() {
+    try {
+      if (!handed && appQ.length) {
+        const id = appQ.shift(); saveQ(); await Spotify.play(id);
+        toast("Playing: " + recOf(id, qMeta.get(id)).title); setTimeout(pollNow, 900); return;
+      }
+      if (!handed) {
+        let up = []; try { up = await Spotify.upNext(); } catch (e) {}
+        up = up.filter(t => !np || t.id !== np.id);
+        if (!up.length) {
+          const cur = np && byId.get(np.id), s = cur && cur.key ? suggest(cur, 1)[0] : null;
+          if (s) { await Spotify.play(s.t.id); toast("Nothing was lined up — playing " + s.t.title); setTimeout(pollNow, 900); return; }
+        }
+      }
+      await Spotify.next(); setTimeout(pollNow, 700);
+    } catch (e) { playError(e); }
+  }
+  $("pvNext").onclick = smartNext;
   const devIcon = t => ({ Smartphone: IC.phone, Computer: IC.laptop, Speaker: IC.speaker, TV: IC.tv, CastAudio: IC.speaker, CastVideo: IC.tv, AVR: IC.speaker, Tablet: IC.phone, Automobile: IC.car }[t] || IC.speaker);
   const isCast = d => /cast/i.test(d.type || "") || /google|nest|chromecast/i.test(d.name || "");
   const devHint = d => d.type === "Smartphone" || d.type === "Computer" || d.type === "Tablet"

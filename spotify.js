@@ -158,16 +158,18 @@
   async function devices() { return (await api("/me/player/devices")).devices || []; }
   const setVolume = pct => api("/me/player/volume?volume_percent=" + Math.max(0, Math.min(100, Math.round(pct))), { method: "PUT" });
   const transfer = deviceId => api("/me/player", { method: "PUT", body: JSON.stringify({ device_ids: [deviceId], play: true }) });
+  // When Spotify reports no active device, go back to the device that was last playing (normally the phone).
+  // Never fall back to some other device in the list — that silently moves the music off the phone.
   async function pickDevice() {
-    const ds = await devices();
-    return ds.find(d => d.is_active) || ds.find(d => d.type === "Smartphone") || ds[0] || null;
+    const ds = await devices(), last = localStorage.getItem("kw.lastDevice");
+    return ds.find(d => d.is_active) || (last && ds.find(d => d.id === last)) || ds.find(d => d.type === "Smartphone") || null;
   }
   async function withDevice(fn) {
     try { return await fn(null); }
     catch (e) {
       if (e.status !== 404) throw e;           // 404 = no active device; wake the best available one
       const d = await pickDevice();
-      if (!d) { const err = new Error("Open Spotify on your phone or another device first, then try again."); err.code = "nodevice"; throw err; }
+      if (!d) { const err = new Error("Spotify can't see your phone right now. Open the Spotify app for a second, then try again."); err.code = "nodevice"; throw err; }
       return fn(d.id);
     }
   }
@@ -203,6 +205,7 @@
     const j = await api("/me/player");
     if (!j || !j.item) return null;
     const t = trackOf(j.item); if (!t) return null;
+    if (j.device && j.device.id) { try { localStorage.setItem("kw.lastDevice", j.device.id); } catch (e) {} }
     return Object.assign(t, { playing: !!j.is_playing, progress: j.progress_ms || 0, at: Date.now(), device: j.device ? j.device.name : "", deviceType: j.device ? j.device.type : "",
       volume: j.device && typeof j.device.volume_percent === "number" ? j.device.volume_percent : null, canVolume: j.device ? j.device.supports_volume !== false : false });
   }
@@ -211,8 +214,8 @@
     return (j.queue || []).map(trackOf).filter(Boolean);
   }
   const seek = ms => api("/me/player/seek?position_ms=" + Math.max(0, Math.round(ms)), { method: "PUT" });
-  const next = () => api("/me/player/next", { method: "POST" });
-  const previous = () => api("/me/player/previous", { method: "POST" });
+  const next = () => withDevice(dev => api("/me/player/next" + q(dev), { method: "POST" }));
+  const previous = () => withDevice(dev => api("/me/player/previous" + q(dev), { method: "POST" }));
 
   async function recentlyPlayed() {
     const j = await api("/me/player/recently-played?limit=50");

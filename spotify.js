@@ -157,6 +157,25 @@
     return r && r.snapshot_id;
   }
 
+  // ---- Live set: a private playlist the app edits so "up next" can be changed freely ----
+  const uriOf = id => "spotify:track:" + id;
+  async function liveAdd(plId, ids, position) {
+    let snap = null;
+    for (let i = 0; i < ids.length; i += 100) {
+      const body = { uris: ids.slice(i, i + 100).map(uriOf) };
+      if (position != null) body.position = position + i;
+      snap = (await api(`/playlists/${plId}/items`, { method: "POST", body: JSON.stringify(body) })).snapshot_id || snap;
+    }
+    return snap;
+  }
+  const liveRemove = (plId, ids) => api(`/playlists/${plId}/items`, { method: "DELETE", body: JSON.stringify({ items: [...new Set(ids)].map(id => ({ uri: uriOf(id) })) }) });
+  const liveMove = (plId, from, before) => api(`/playlists/${plId}/items`, { method: "PUT", body: JSON.stringify({ range_start: from, insert_before: before, range_length: 1 }) });
+  async function liveReplace(plId, ids) {
+    await api(`/playlists/${plId}/items`, { method: "PUT", body: JSON.stringify({ uris: ids.slice(0, 100).map(uriOf) }) });
+    if (ids.length > 100) await liveAdd(plId, ids.slice(100));
+  }
+  const playPlaylist = (plId, position) => withDevice(dev => api("/me/player/play" + q(dev), { method: "PUT", body: JSON.stringify({ context_uri: "spotify:playlist:" + plId, offset: { position: position || 0 } }) }));
+
   async function createPlaylist(name, description, trackIds) {
     const pl = await api("/me/playlists", { method: "POST", body: JSON.stringify({ name, description, public: false }) });
     await addTracks(pl.id, trackIds);
@@ -222,7 +241,7 @@
     if (!j || !j.item) return null;
     const t = trackOf(j.item); if (!t) return null;
     if (j.device && j.device.id) { try { localStorage.setItem("kw.lastDevice", j.device.id); } catch (e) {} }
-    return Object.assign(t, { playing: !!j.is_playing, progress: j.progress_ms || 0, at: Date.now(), device: j.device ? j.device.name : "", deviceType: j.device ? j.device.type : "",
+    return Object.assign(t, { context: j.context && j.context.uri ? j.context.uri : null, playing: !!j.is_playing, progress: j.progress_ms || 0, at: Date.now(), device: j.device ? j.device.name : "", deviceType: j.device ? j.device.type : "",
       volume: j.device && typeof j.device.volume_percent === "number" ? j.device.volume_percent : null, canVolume: j.device ? j.device.supports_volume !== false : false });
   }
   async function upNext() {
@@ -307,6 +326,7 @@
     searchAll, searchTracks, moveInPlaylist, getTrack, getAlbum, getArtist, transfer, setVolume,
     recentlyPlayed, playerState, upNext, seek, next, previous,
     log: () => LOG.slice(), rawPlayer: () => api("/me/player"),
+    liveAdd, liveRemove, liveMove, liveReplace, playPlaylist,
     canPlay, play, playContext, playList, setShuffle, queue, pause, resume, nowPlaying, devices,
     login, handleRedirect, connected: () => !!store.get(), logout: () => store.clear(),
     me, myPlaylists, playlistTracks, createPlaylist, addTracks, configured: () => !!window.CONFIG.spotifyClientId

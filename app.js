@@ -511,7 +511,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.22";
+  const APP_VERSION = "1.23";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -735,6 +735,10 @@
   // command to wake Spotify when nothing is playing.
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   async function playNow(id) {
+    if (liveOn) {
+      if (isLive()) { await liveRun(() => liveInsertNext(id)); await waitUpNext(id); await Spotify.next(); return; }
+      await startLive(id); return;
+    }
     if (!np || !np.playing) { await Spotify.play(id); return; }
     // Spotify adds our track to the END of its queue, so step past anything queued ahead of it,
     // then hand those tracks back to the front of the app queue, in the same order.
@@ -823,7 +827,7 @@
       if (np && handed && np.id === handed) { handed = null; saveQ(); }
       if (np && np.id !== lastNpId) {
         lastNpId = np.id;
-        checkHanded(); headsKey = "";
+        liveTrack(); checkHanded(); headsKey = "";
         if (!$("view-playing").hidden) paintSuggest();
         if (follow) { const rec = byId.get(np.id); if (rec && rec.key && (!state.anchor || state.anchor.id !== rec.id)) setAnchor(rec, false, true); }
       }
@@ -857,7 +861,7 @@
     $("pvKey").innerHTML = rec && rec.key
       ? `<span class="k" style="background:${col(parseInt(rec.key))}">${rec.key}</span>${NAMES[rec.key]}${rec.tempo ? " · " + rec.tempo + " BPM" : ""}`
       : "No key yet in your library";
-    $("pvWhere").innerHTML = rec ? whereHtml(rec) + noteHtml(rec.id) : "";
+    $("pvWhere").innerHTML = (isLive() ? '<div class="livechip"><span></span>Playing from your Live set</div>' : "") + (rec ? whereHtml(rec) + noteHtml(rec.id) : "");
     $("pvDev").textContent = "";
     $("pvDevName").textContent = np.device || "Unknown device";
     $("pvDevIco").innerHTML = devIcon(np.deviceType); paintVolume();
@@ -883,6 +887,13 @@
   // Next: if Spotify has nothing lined up, skipping would just stop the music, so play something instead.
   async function smartNext() {
     try {
+      if (isLive()) {
+        if (!appQ.length) {
+          const cur = byId.get(np.id), s = cur && cur.key ? suggest(cur, 1)[0] : null;
+          if (s) { await liveRun(() => liveInsertNext(s.t.id)); await waitUpNext(s.t.id); toast("Nothing was lined up — playing " + s.t.title); }
+        }
+        await Spotify.next(); setTimeout(pollNow, 700); return;
+      }
       if (!handed && appQ.length) {
         const id = appQ.shift(); saveQ(); await playNow(id);
         toast("Playing: " + recOf(id, qMeta.get(id)).title); setTimeout(pollNow, 900); return;
@@ -989,11 +1000,102 @@
   function enqueue(t) {
     if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return; }
     if (!Spotify.canPlay()) { showReconnect(); return; }
+    if (isLive()) { appQ.push(t.id); paintQueue(); liveDo(() => liveAppend([t.id])); toast(`Queued: ${t.title} (${appQ.length} in queue)`); return; }
     appQ.push(t.id); saveQ();
     toast(`Queued: ${t.title} (${appQ.length + (handed ? 1 : 0)} in queue)`);
     pump();
   }
+  // ---------- Live set ----------
+  // Spotify plays from a private playlist, "ASH//FLOW Live", which the app edits. Everything after the
+  // playing track IS your queue, so tracks can be inserted, moved and removed — no skipping, no blips.
+  let liveOn = ls.get("kw.liveOn", true);
+  let live = ls.get("kw.live", { pl: null, items: [], cur: -1 });
+  const saveLive = () => ls.set("kw.live", live);
+  $("liveTog").checked = liveOn;
+  $("liveTog").onchange = () => { liveOn = $("liveTog").checked; ls.set("kw.liveOn", liveOn); toast(liveOn ? "Live set on — the next track you play starts it" : "Live set off — using Spotify's queue"); paintPlaying(); };
+  let liveChain = Promise.resolve();
+  // Playlist edits run one at a time, in order; a failed one doesn't block the rest.
+  const liveRun = fn => { const p = liveChain.catch(() => {}).then(fn); liveChain = p.catch(() => {}); return p; };
+  const liveDo = fn => liveRun(fn).catch(liveError);
+  const isLive = () => !!(liveOn && live.pl && np && np.context === "spotify:playlist:" + live.pl);
+  function liveError(e) {
+    if (e && e.status === 404) { live.pl = null; saveLive(); toast("The Live set playlist was missing. It'll be recreated next time you play a track."); }
+    else playError(e);
+  }
+  const setTail = () => { appQ = live.items.slice(live.cur + 1); ls.set("kw.appq", appQ); paintQueue(); paintModes(); if (typeof paintSuggest === "function") paintSuggest(); };
+  async function ensureLivePl() {
+    if (live.pl) return live.pl;
+    const pl = await Spotify.createPlaylist("ASH//FLOW Live", "Your live set from ASH//FLOW. The app edits this as you queue, so leave it be.", []);
+    live.pl = pl.id; saveLive(); return pl.id;
+  }
+  // Keep the mirror in step when Spotify moves on to another track.
+  function liveTrack() {
+    if (!isLive() || live.items[live.cur] === np.id) return;
+    let i = live.items.indexOf(np.id, live.cur + 1);
+    if (i < 0) i = live.items.indexOf(np.id);
+    if (i < 0) return;                         // e.g. a track still sitting in Spotify's own queue
+    live.cur = i; saveLive(); setTail();
+  }
+  async function startLive(firstId) {
+    const pl = await ensureLivePl();
+    const ids = [firstId, ...appQ.filter(x => x !== firstId)];
+    try { await Spotify.liveReplace(pl, ids); }
+    catch (e) { if (e.status === 404) { live.pl = null; saveLive(); return startLive(firstId); } throw e; }
+    live.items = ids; live.cur = 0; saveLive(); setTail();
+    await Spotify.playPlaylist(pl, 0);
+  }
+  // Give the phone a moment to pick up the playlist change before skipping.
+  async function waitUpNext(id) {
+    for (let i = 0; i < 8; i++) {
+      await sleep(400);
+      try { const up = (await Spotify.upNext()).filter(t => !np || t.id !== np.id); if (up.length && up[0].id === id) return true; } catch (e) {}
+    }
+    return false;
+  }
+  async function liveInsertNext(id) {
+    const pos = live.cur + 1;
+    await Spotify.liveAdd(live.pl, [id], pos);
+    live.items.splice(pos, 0, id); saveLive(); setTail();
+  }
+  async function liveAppend(ids) {
+    await Spotify.liveAdd(live.pl, ids);
+    live.items.push(...ids); saveLive(); setTail();
+  }
+  // Take a track out of "up next": move it to just before the playing track (into the played part).
+  async function liveRemoveAt(qi) {
+    const pos = live.cur + 1 + qi, id = live.items[pos]; if (!id) return;
+    await Spotify.liveMove(live.pl, pos, live.cur);
+    live.items.splice(pos, 1); live.items.splice(live.cur, 0, id); live.cur += 1; saveLive(); setTail();
+  }
+  async function liveReorder(newTail) {
+    const old = live.items.slice(live.cur + 1);
+    let i = 0; while (i < old.length && old[i] === newTail[i]) i++;
+    if (i === old.length) return;
+    let from, before;
+    const up = old.slice(); const idx = up.indexOf(newTail[i], i); up.splice(idx, 1); up.splice(i, 0, newTail[i]);
+    if (up.every((v, k) => v === newTail[k])) { from = idx; before = i; } else { from = i; before = newTail.indexOf(old[i], i) + 1; }
+    await Spotify.liveMove(live.pl, live.cur + 1 + from, live.cur + 1 + before);
+    const base = live.cur + 1, [it] = live.items.splice(base + from, 1); live.items.splice(base + (before > from ? before - 1 : before), 0, it);
+    saveLive(); setTail();
+  }
+  // Queue several tracks (end of the list) — Live set or Spotify's queue, whichever is in use.
+  function enqueueIds(ids, label) {
+    if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return; }
+    if (!Spotify.canPlay()) { showReconnect(); return; }
+    if (!ids.length) return;
+    if (isLive()) { appQ.push(...ids); paintQueue(); liveDo(() => liveAppend(ids)); }
+    else { ids.forEach(id => appQ.push(id)); saveQ(); pump(); }
+    toast(label || `Queued ${ids.length} tracks`);
+  }
+  // Put a track straight after the playing one, without skipping to it.
+  function playNextUp(id, title) {
+    if (isLive()) liveDo(() => liveInsertNext(id));
+    else { appQ.unshift(id); saveQ(); pump(); }
+    toast("Up next: " + title);
+  }
+
   async function pump() {
+    if (isLive()) return;
     if (pumping || handed || !appQ.length || !Spotify.connected() || !Spotify.canPlay()) return;
     pumping = true;
     const id = appQ[0];
@@ -1028,7 +1130,7 @@
       const del = document.createElement("button"); del.type = "button"; del.className = "del"; del.textContent = "✕"; del.setAttribute("aria-label", "Remove from queue");
       if (locked) { del.disabled = true; del.style.visibility = "hidden"; }
       r.querySelector(".play").replaceWith(del);
-      del.onclick = () => { const qi = parseInt(r.dataset.qi); appQ.splice(qi, 1); saveQ(); toast("Removed from queue"); };
+      del.onclick = () => { const qi = parseInt(r.dataset.qi); if (isLive()) { liveDo(() => liveRemoveAt(qi)); toast("Removed from queue"); return; } appQ.splice(qi, 1); saveQ(); toast("Removed from queue"); };
       const lab = document.createElement("div"); lab.className = "rel";
       const rel = prev && prev.key ? relations(prev.key) : null, m = rel && rec.key ? rel[rec.key] : null;
       lab.textContent = !rec.key ? "No key yet" : !prev || !prev.key ? "" : m ? MOVE_NAME[m] : "Key clash";
@@ -1040,11 +1142,13 @@
       prev = rec;
     });
   }
-  makeSortable($("pvQueue"), ids => { appQ = ids; saveQ(); });
+  makeSortable($("pvQueue"), ids => { if (isLive()) { const nt = ids.slice(); liveDo(() => liveReorder(nt)); return; } appQ = ids; saveQ(); });
   $("qClear").onclick = () => {
     const b = $("qClear");
     if (!b.dataset.confirm) { b.dataset.confirm = "1"; b.textContent = "Tap again to clear"; setTimeout(() => { delete b.dataset.confirm; b.textContent = "Clear queue"; }, 3000); return; }
-    appQ = []; saveQ(); delete b.dataset.confirm; b.textContent = "Clear queue"; toast("Queue cleared");
+    delete b.dataset.confirm; b.textContent = "Clear queue";
+    if (isLive()) { const n = appQ.length; liveDo(async () => { for (let i = n - 1; i >= 0; i--) await liveRemoveAt(i); }); toast("Queue cleared"); return; }
+    appQ = []; saveQ(); toast("Queue cleared");
   };
   function loadUpNext() { paintQueue(); }
 
@@ -1203,7 +1307,7 @@
           if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return; }
           if (!Spotify.canPlay()) { showReconnect(); return; }
           const ids = a.tracks.map(t => t.id).filter(id => !appQ.includes(id) && id !== handed);
-          ids.forEach(id => appQ.push(id)); saveQ(); pump(); toast(`Queued ${ids.length} tracks from ${a.name}`);
+          enqueueIds(ids, `Queued ${ids.length} tracks from ${a.name}`);
         };
       } else {
         let a = page.data;
@@ -1479,7 +1583,7 @@
     if (tog) tog.onchange = () => setAuto(tog.checked);
     box.querySelectorAll(".hq").forEach(b => b.onclick = () => {
       const t = byId.get(b.dataset.id); if (!t) return;
-      if (b.textContent === "Play next") { appQ.unshift(t.id); saveQ(); pump(); toast("Up next: " + t.title); } else enqueue(t);
+      if (b.textContent === "Play next") playNextUp(t.id, t.title); else enqueue(t);
       headsKey = ""; paintHeads();
     });
   }

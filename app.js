@@ -137,9 +137,11 @@
       const t = state.anchor;
       a.innerHTML = `<span class="eyebrow">Mixing out of</span><span class="t">${esc(t.title)}</span>
         <span class="m">${esc(t.artist)} · ${t.key} ${NAMES[t.key]} · ${t.tempo || "–"} tempo</span>
-        <span class="acts"><button class="btn ghost" type="button" id="aAdd">${crate.includes(t.id) ? "In crate ✓" : "+ Crate"}</button><button class="btn ghost" type="button" id="clr">Clear track</button><button class="btn" type="button" id="all">All tracks</button></span>`;
+        <span class="acts"><button class="btn ghost" type="button" id="aAdd">${crate.includes(t.id) ? "In crate ✓" : "+ Crate"}</button>${state.trail.length > 1 ? '<button class="btn ghost" type="button" id="back1">‹ Back one</button>' : ""}<button class="btn ghost" type="button" id="clr">${state.trail.length > 1 ? "Clear path" : "Clear track"}</button><button class="btn" type="button" id="all">All tracks</button></span>`;
       $("clr").onclick = () => { state.trail = []; state.anchor = null; $("tmin").value = ""; $("tmax").value = ""; saveState(); render(); };
       $("aAdd").onclick = () => { toggleCrate(t.id); render(); };
+      const b1 = $("back1");
+      if (b1) b1.onclick = () => { state.trail.pop(); setAnchor(state.trail[state.trail.length - 1], true); };
     } else if (state.key) {
       a.innerHTML = `<span class="eyebrow">Selected key</span><span class="t">${state.key} · ${NAMES[state.key]}</span>
         <span class="m">Tap a track to mix out of it. Searching always looks across every track.</span>

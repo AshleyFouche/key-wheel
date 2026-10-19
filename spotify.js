@@ -215,13 +215,26 @@
   async function getAlbum(id) {
     const a = await api("/albums/" + id);
     let tracks = (a.tracks && a.tracks.items) || [], next = a.tracks && a.tracks.next;
-    while (next) { const j = await api(next); tracks = tracks.concat(j.items || []); next = j.next; }
+    try { while (next) { const j = await api(next); tracks = tracks.concat(j.items || []); next = j.next; } } catch (e) {}
+    const total = a.total_tracks || (a.tracks && a.tracks.total) || tracks.length;
+    // Spotify sometimes returns only part of the track list with the album; fetch the full list directly if so.
+    if (tracks.length < total) {
+      for (const lim of [50, 20, 10, 5]) {
+        try {
+          let list = [], url = `/albums/${id}/tracks?limit=${lim}`;
+          for (let i = 0; url && i < 20; i++) { const j = await api(url); list = list.concat(j.items || []); url = j.next; }
+          if (list.length > tracks.length) tracks = list;
+          break;
+        } catch (e) { /* try a smaller page size */ }
+      }
+    }
     return {
-      id: a.id, name: a.name, image: img(a.images), year: (a.release_date || "").slice(0, 4), type: a.album_type,
+      id: a.id, name: a.name, image: img(a.images), year: (a.release_date || "").slice(0, 4), type: a.album_type, total,
       artists: (a.artists || []).map(x => ({ id: x.id, name: x.name })),
       tracks: tracks.filter(t => t && t.id).map(t => ({ id: t.id, title: t.name, artist: (t.artists || []).map(x => x.name).join(", ") }))
     };
   }
+
   async function getArtist(id) {
     const a = await api("/artists/" + id);
     // Spotify has tightened page sizes on this endpoint; try smaller requests until one is accepted.

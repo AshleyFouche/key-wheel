@@ -741,7 +741,7 @@
         a.tracks.forEach(t => qMeta.set(t.id, { title: t.title, artist: t.artist }));
         const known = a.tracks.filter(t => byId.get(t.id) && byId.get(t.id).key).length;
         w.innerHTML = `<div class="bhead"><div class="bimg" style="background-image:url('${esc(a.image)}')"></div><div><div class="bt">${esc(a.name)}</div>
-          <div class="bs">${a.artists.map(x => `<a href="#" data-artist="${esc(x.id)}" style="color:inherit">${esc(x.name)}</a>`).join(", ")}${a.year ? " · " + a.year : ""} · ${a.tracks.length} tracks</div>
+          <div class="bs">${a.artists.map(x => `<a href="#" data-artist="${esc(x.id)}" style="color:inherit">${esc(x.name)}</a>`).join(", ")}${a.year ? " · " + a.year : ""} · ${a.total && a.total > a.tracks.length ? `showing ${a.tracks.length} of ${a.total} tracks` : a.tracks.length + " tracks"}</div>
           <div class="bs">${known} with a key in your library</div></div></div>
           <div class="crate-actions"><button class="btn ghost" type="button" id="bAllQ">Queue all with keys</button><a class="btn ghost" href="https://open.spotify.com/album/${esc(a.id)}">Open in Spotify</a></div>`;
         w.querySelectorAll("[data-artist]").forEach(el => el.onclick = e => { e.preventDefault(); openArtist(el.dataset.artist); });

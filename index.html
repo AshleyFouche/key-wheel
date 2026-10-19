@@ -298,7 +298,8 @@
     <p class="status" id="pasteStatus" role="status"></p>
     <h2>Spotify</h2>
     <p class="note" id="spInfo"></p>
-    <button class="btn ghost" id="logout" type="button">Disconnect Spotify</button>
+    <div class="crate-actions"><button class="btn" id="connCheck" type="button">Connection check</button><button class="btn ghost" id="logout" type="button">Disconnect Spotify</button></div>
+    <div id="connOut" hidden></div>
     <h2>About the keys</h2>
     <p class="note">Keys and BPMs come from Spotify's Mix view. A is minor, B is major. Same key, one step, mood switch (same number, other letter), energy boost (+2) and diagonal moves all mix cleanly. The rules narrow the field; your ears decide the blend.</p>
   </section>

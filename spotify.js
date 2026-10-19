@@ -81,6 +81,14 @@
     return store.get().access;
   }
 
+  // Recent player commands and Spotify's replies, for the Connection check on the More tab.
+  const LOG = [];
+  const logIt = (opts, path, status, msg) => {
+    if (!/\/me\/player/.test(path)) return;
+    if ((opts.method || "GET") === "GET" && status < 300 && !/devices/.test(path)) return;   // skip routine polling
+    LOG.push({ at: Date.now(), m: opts.method || "GET", p: path.replace(API, "").replace(/uris=[^&]+/, "uris=…"), s: status, msg: msg || "" });
+    if (LOG.length > 25) LOG.shift();
+  };
   async function api(path, opts = {}) {
     const tk = await token();
     if (!tk) { const e = new Error("Not connected to Spotify"); e.code = "auth"; throw e; }
@@ -92,9 +100,11 @@
       await new Promise(res => setTimeout(res, Math.min(wait, 10) * 1000));
       return api(path, opts);
     }
+    logIt(opts, path, r.status, "");
     if (r.status === 401) { store.clear(); const e = new Error("Spotify sign-in expired"); e.code = "auth"; throw e; }
     const text = await r.text();
     let j = {}; try { j = text ? JSON.parse(text) : {}; } catch (e) { j = {}; }
+    if (!r.ok && LOG.length && LOG[LOG.length - 1].s === r.status) LOG[LOG.length - 1].msg = (j.error && (j.error.reason || j.error.message)) || "";
     if (!r.ok) { const e = new Error((j.error && j.error.message) || ("Spotify error " + r.status)); e.status = r.status; e.reason = j.error && j.error.reason; throw e; }
     return j;
   }
@@ -169,7 +179,11 @@
     catch (e) {
       if (e.status !== 404) throw e;           // 404 = no active device; wake the best available one
       const d = await pickDevice();
-      if (!d) { const err = new Error("Spotify can't see your phone right now. Open the Spotify app for a second, then try again."); err.code = "nodevice"; throw err; }
+      if (!d) {
+        const seen = (await devices().catch(() => [])).map(x => `${x.name} (${x.type}${x.is_restricted ? ", locked" : ""})`);
+        const err = new Error("Spotify can't see your phone right now. " + (seen.length ? "It only sees: " + seen.join(", ") + "." : "It sees no devices at all.") + " Open the Spotify app for a second, then try again.");
+        err.code = "nodevice"; throw err;
+      }
       return fn(d.id);
     }
   }
@@ -290,6 +304,7 @@
   window.Spotify = {
     searchAll, searchTracks, moveInPlaylist, getTrack, getAlbum, getArtist, transfer, setVolume,
     recentlyPlayed, playerState, upNext, seek, next, previous,
+    log: () => LOG.slice(), rawPlayer: () => api("/me/player"),
     canPlay, play, playContext, playList, setShuffle, queue, pause, resume, nowPlaying, devices,
     login, handleRedirect, connected: () => !!store.get(), logout: () => store.clear(),
     me, myPlaylists, playlistTracks, createPlaylist, addTracks, configured: () => !!window.CONFIG.spotifyClientId

@@ -511,7 +511,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.18";
+  const APP_VERSION = "1.19";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -572,6 +572,31 @@
     sTimer = setTimeout(() => runSearch(false), 350);
   });
   $("sq").addEventListener("keydown", e => { if (e.key === "Enter") { clearTimeout(sTimer); $("sq").blur(); runSearch(false); } });
+
+  // ---------- connection check ----------
+  $("connCheck").onclick = async () => {
+    const out = $("connOut"); out.hidden = false; out.innerHTML = '<p class="note">Checking…</p>';
+    const lines = [], time = t => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+    lines.push("ASH//FLOW " + APP_VERSION + " · " + new Date().toLocaleString());
+    try {
+      const p = await Spotify.rawPlayer();
+      if (!p || !p.device) lines.push("NOW: Spotify reports nothing playing and no active device.");
+      else lines.push(`NOW: ${p.is_playing ? "playing" : "paused"} "${p.item ? p.item.name : "?"}" on ${p.device.name} (${p.device.type}${p.device.is_restricted ? ", LOCKED — Spotify won't take commands for it" : ""}${p.device.is_private_session ? ", private session" : ""}) · context: ${p.context ? p.context.type : "single track"}`);
+    } catch (e) { lines.push("NOW: couldn't ask Spotify — " + e.message); }
+    try {
+      const ds = await Spotify.devices();
+      lines.push("DEVICES Spotify can see: " + (ds.length ? "" : "none"));
+      ds.forEach(d => lines.push(`  • ${d.name} — ${d.type}${d.is_active ? ", ACTIVE" : ""}${d.is_restricted ? ", LOCKED" : ""} · id …${(d.id || "").slice(-6)}`));
+    } catch (e) { lines.push("DEVICES: couldn't ask Spotify — " + e.message); }
+    let last = ""; try { last = localStorage.getItem("kw.lastDevice") || ""; } catch (e) {}
+    lines.push("Last device ASH//FLOW saw playing: " + (last ? "id …" + last.slice(-6) : "none yet"));
+    const log = Spotify.log();
+    lines.push("RECENT COMMANDS (newest last): " + (log.length ? "" : "none yet"));
+    log.forEach(l => lines.push(`  ${time(l.at)}  ${l.m} ${l.p}  →  ${l.s}${l.msg ? " " + l.msg : ""}`));
+    const text = lines.join("\n");
+    out.innerHTML = `<pre class="conn">${esc(text)}</pre><button class="btn ghost" type="button" id="connCopy">Copy report</button>`;
+    $("connCopy").onclick = () => { navigator.clipboard.writeText(text).then(() => toast("Copied — paste it to Claude"), () => toast("Couldn't copy — take a screenshot instead")); };
+  };
 
   function paintMore() {
     const extra = ls.get("kw.extra", []);

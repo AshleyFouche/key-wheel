@@ -417,7 +417,8 @@
 
   // ---------- playlists ----------
   let plCache = null;
-  async function paintPlaylists() {
+  let plScroll = 0, plLastId = null;
+  async function paintPlaylists(restore) {
     const w = $("plWrap");
     if (!Spotify.configured()) { w.innerHTML = '<p class="note">Spotify isn\'t set up in this copy of the app yet.</p>'; return; }
     if (!Spotify.connected()) { w.innerHTML = '<p class="note">Connect Spotify to see your playlists here, with keys from your library.</p><button class="btn" id="plConnect" type="button">Connect Spotify</button>'; $("plConnect").onclick = () => Spotify.login().catch(e => toast(e.message)); return; }
@@ -434,10 +435,12 @@
         const img = p.images && p.images.length ? `<img src="${esc(p.images[p.images.length - 1].url)}" alt="">` : '<span class="ph"></span>';
         const n = (p.items && p.items.total) ?? (p.tracks && p.tracks.total) ?? "";
         d.innerHTML = `${img}<div style="min-width:0"><div class="n">${esc(p.name)}</div><div class="c">${n !== "" ? n + " tracks" : ""}</div></div><span class="c">›</span>`;
-        d.onclick = () => openPlaylist(p);
+        d.onclick = () => { plScroll = window.scrollY; plLastId = p.id; openPlaylist(p); window.scrollTo(0, 0); };
+        if (p.id === plLastId) d.classList.add("last");
         list.appendChild(d);
       });
       w.appendChild(list);
+      if (restore && plScroll) requestAnimationFrame(() => window.scrollTo(0, plScroll));
     } catch (e) {
       w.innerHTML = `<p class="note">${e.code === "auth" ? "Spotify sign-in expired. Tap Connect Spotify." : "Couldn't load playlists: " + esc(e.message)}</p>`;
       paintSpotifyBtn();
@@ -448,7 +451,7 @@
     lastPlaylist = p;
     const w = $("plWrap");
     w.innerHTML = `<button class="btn ghost back" id="plBack" type="button">‹ All playlists</button><h2>${esc(p.name)}</h2><p class="note">Loading tracks…</p>`;
-    $("plBack").onclick = paintPlaylists;
+    $("plBack").onclick = () => paintPlaylists(true);
     try {
       const tracks = await Spotify.playlistTracks(p.id);
       const recs = tracks.map(t => byId.get(t.id) || { id: t.id, title: t.title, artist: t.artist, tempo: 0, key: null });
@@ -507,7 +510,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.8";
+  const APP_VERSION = "1.9";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1366,7 +1369,7 @@
     if (v === "crate") paintCrate();
     if (v === "search") paintSearch();
     if (v === "history") { paintHistory(); syncRecent(); }
-    if (v === "playlists" && !skipPaint) paintPlaylists();
+    if (v === "playlists" && !skipPaint) paintPlaylists(true);
     if (v === "more") paintMore();
     if (v !== "browse" && v !== "info" && v !== "match") { try { sessionStorage.setItem("kw.view", v); } catch (e) {} }
   }

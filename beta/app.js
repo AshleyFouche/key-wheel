@@ -591,7 +591,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.8";
+  const APP_VERSION = "2.9";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -944,8 +944,10 @@
     toast(follow ? "Following what Spotify plays" : "Stopped following");
     if (follow && np) { const rec = byId.get(np.id); if (rec && rec.key && (!state.anchor || state.anchor.id !== rec.id)) setAnchor(rec, false, true); }
   };
+  let lastPoll = 0;
   async function pollNow() {
     if (!Spotify.connected() || !Spotify.canPlay() || document.visibilityState !== "visible") return;
+    lastPoll = Date.now();
     try {
       const fresh = await Spotify.playerState();
       // Spotify briefly reports "nothing playing" between tracks or when the phone's connection blips.
@@ -959,7 +961,7 @@
       if (Date.now() - lastRecentSync > 120000) syncRecent();
       if (np && handed && np.id === handed) { handed = null; saveQ(); }
       if (np && np.id !== lastNpId) {
-        lastNpId = np.id;
+        lastNpId = np.id; noteStarted(np.id);
         liveTrack(); checkHanded(); headsKey = "";
         if (!$("view-playing").hidden) paintSuggest();
         if (follow) { const rec = byId.get(np.id); if (rec && rec.key && (!state.anchor || state.anchor.id !== rec.id)) setAnchor(rec, false, true); }
@@ -1625,8 +1627,15 @@
 
   // ---------- suggestion engine ----------
   const MOVE_W = { same: 1, adj: 0.9, rel: 0.85, diag: 0.75, boost: 0.7 };
+  // Every track that starts playing is remembered for 3 hours, even if skipped before it counts as "played".
+  let started = ls.get("kwb.started", {});
+  function noteStarted(id) {
+    const now = Date.now(); started[id] = now;
+    for (const k in started) if (now - started[k] > 3 * 3600e3) delete started[k];
+    ls.set("kwb.started", started);
+  }
   function playedThisFlow() {
-    const h = ls.get("kwb.history", []), out = new Set();
+    const h = ls.get("kwb.history", []), out = new Set(Object.keys(started).filter(k => Date.now() - started[k] < 3 * 3600e3));
     for (let i = h.length - 1; i >= 0; i--) { if (i < h.length - 1 && h[i + 1].at - h[i].at > GAP) break; if (Date.now() - h[i].at > 8 * 3600e3) break; out.add(h[i].id); }
     return out;
   }
@@ -1743,10 +1752,11 @@
     if (st.mode !== "ok" && st.cur && st.cur.key) {
       if (st.fallback) html += `<div class="hautoline"><span>This track has no key yet — following <b>${esc(st.cur.title)}</b>, the last one that did</span></div>`;
       const sug = suggest(st.cur, 3);
-      html += sug.map(x => `<div class="hsug"><span class="k" style="background:${col(parseInt(x.t.key))}">${x.t.key}</span><span class="ht"><b>${esc(x.t.title)}</b><small>${esc(x.t.artist)} · ${x.t.tempo || "–"} · ${MOVE_NAME[x.m]}${pairCount(st.cur.id, x.t.id) ? ' · <span class="mem">★ played after</span>' : ""}</small></span><button type="button" class="hq" data-id="${esc(x.t.id)}">${st.mode === "clash" && !handed ? "Play next" : "Queue"}</button></div>`).join("");
+      html += sug.map(x => `<div class="hsug"><span class="hart" data-aid="${esc(x.t.id)}"></span><span class="k" style="background:${col(parseInt(x.t.key))}">${x.t.key}</span><span class="ht"><b>${esc(x.t.title)}</b><small>${esc(x.t.artist)} · ${x.t.tempo || "–"} · ${MOVE_NAME[x.m]}${pairCount(st.cur.id, x.t.id) ? ' · <span class="mem">★ played after</span>' : ""}</small></span><button type="button" class="hq" data-id="${esc(x.t.id)}">${st.mode === "clash" && !handed ? "Play next" : "Queue"}</button></div>`).join("");
       if (!sug.length) html += '<div class="hsug"><small>No close matches in your library for this one.</small></div>';
     }
     box.innerHTML = html;
+    box.querySelectorAll(".hart").forEach(el => { if (art[el.dataset.aid]) paintArt(el, el.dataset.aid); else if (artObs) artObs.observe(el); });
     box.querySelector(".hx").onclick = () => { headsDismissed.add(np.id); paintHeads(); };
     const tog = box.querySelector("#autoTog");
     if (tog) tog.onchange = () => setAuto(tog.checked);
@@ -1764,6 +1774,8 @@
   $("autoTog2").checked = autoPick;
   $("autoTog2").onchange = () => setAuto($("autoTog2").checked);
   setInterval(paintHeads, 1000);
+  // Near the end of a track, check Spotify every second so a late jump or a short track still gets its auto-pick.
+  setInterval(() => { if (np && np.playing && np.duration && np.duration - posNow() < 20000 && Date.now() - lastPoll > 950) pollNow(); }, 1000);
   setInterval(() => { if (appQ.length && !handed) pump(); }, 1000);
   // Leaving the app (locking the phone, switching apps): hand the next track over now, while we still can.
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") pump(true); });

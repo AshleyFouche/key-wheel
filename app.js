@@ -226,7 +226,7 @@
     const r = document.createElement("div"); r.className = "row";
     const m = rel && rel[t.key] && state.on[rel[t.key]] ? MOVE_NAME[rel[t.key]] : "";
     const pc = from ? pairCount(from.id, t.id) : 0;
-    const dTxt = m && from && from.tempo && t.tempo ? " · " + (t.tempo === from.tempo ? "same BPM" : (t.tempo > from.tempo ? "+" : "") + (t.tempo - from.tempo)) : "";
+    const dTxt = m && from && from.tempo && t.tempo ? " · " + (t.tempo === from.tempo ? "same BPM" : (t.tempo > from.tempo ? "+" : "") + (t.tempo - from.tempo) + " BPM") : "";
     const relLine = (m || pc) ? `<div class="rel">${m}${dTxt}${pc ? `<span class="mem">${m ? " · " : ""}★ played after this${pc > 1 ? " " + pc + "×" : ""}</span>` : ""}</div>` : "";
     const keyHtml = t.key ? `<span class="key" style="background:${col(parseInt(t.key))}">${t.key}</span>` : `<span class="key none">?</span>`;
     r.innerHTML = `${keyHtml}<span class="bpm">${t.tempo || "–"}</span>
@@ -510,7 +510,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.13";
+  const APP_VERSION = "1.14";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1252,7 +1252,9 @@
       if (from.tempo && t.tempo && Math.abs(t.tempo - from.tempo) > 8) continue;
       out.push({ t, m, sc: scoreFor(from, t, m) });
     }
-    return out.sort((a, b) => b.sc - a.sc).slice(0, n);
+    // Exact matches (same key and same BPM) always come first, then the rest by score.
+    const exact = x => x.m === "same" && from.tempo && x.t.tempo === from.tempo ? 1 : 0;
+    return out.sort((a, b) => exact(b) - exact(a) || b.sc - a.sc).slice(0, n);
   }
   function dirBonus(from, t, m, dt) {
     const toB = from.key.endsWith("A") && t.key.endsWith("B"), toA = from.key.endsWith("B") && t.key.endsWith("A");

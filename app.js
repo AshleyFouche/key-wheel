@@ -37,16 +37,17 @@
 
   // ---------- library ----------
   let T = [], byId = new Map(), counts = {};
-  const toRec = a => ({ id: a[0], title: a[1], artist: a[2], tempo: +a[3] || 0, key: normKey(a[4]), crate: a[5] || "", euph: !!a[6], house: !!a[7] });
+  let PL = {};
+  const toRec = a => ({ id: a[0], title: a[1], artist: a[2], tempo: +a[3] || 0, key: normKey(a[4]), crate: a[5] || "", euph: !!a[6], house: !!a[7], src: a[8] || [], crates: a[9] || [] });
   async function loadLibrary() {
     let base = [];
-    try { base = (await (await fetch("library.json", { cache: "no-cache" })).json()).tracks; }
-    catch (e) { base = ls.get("kw.baseCache", []); }
+    try { const lib = await (await fetch("library.json", { cache: "no-cache" })).json(); base = lib.tracks; PL = lib.playlists || {}; ls.set("kw.plNames", PL); }
+    catch (e) { base = ls.get("kw.baseCache", []); PL = ls.get("kw.plNames", {}); }
     if (base.length) ls.set("kw.baseCache", base);
     const extra = ls.get("kw.extra", []);
     byId = new Map();
     base.forEach(a => byId.set(a[0], toRec(a)));
-    extra.forEach(a => { const prev = byId.get(a[0]); const r = toRec(a); if (prev && !r.crate) r.crate = prev.crate; byId.set(a[0], r); });
+    extra.forEach(a => { const prev = byId.get(a[0]); const r = toRec(a); if (prev) { if (!r.crate) r.crate = prev.crate; if (!r.src.length) r.src = prev.src; if (!r.crates.length) r.crates = prev.crates; } byId.set(a[0], r); });
     T = [...byId.values()].filter(t => t.key);
     counts = {}; T.forEach(t => counts[t.key] = (counts[t.key] || 0) + 1);
   }
@@ -130,13 +131,28 @@
     });
   }
 
+  // ---------- where to find a track ----------
+  const plShort = n => String(n || "").replace(/^ASH\/\/F\s*/, "").replace(/\s·\s[\d–-]+\s*★*$/, "").replace(/\s*★+$/, "");
+  function whereHtml(t) {
+    if (!t || (!t.src.length && !t.crates.length)) return "";
+    const chip = id => `<button type="button" class="wchip" data-pl="${esc(id)}">${esc(plShort(PL[id] || "Playlist"))}</button>`;
+    return `<div class="where">${t.src.length ? `<div class="wrow"><span class="wl">Found in</span>${t.src.map(chip).join("")}</div>` : ""}${t.crates.length ? `<div class="wrow"><span class="wl">Crate</span>${t.crates.map(chip).join("")}</div>` : ""}</div>`;
+  }
+  document.addEventListener("click", e => {
+    const b = e.target.closest(".wchip"); if (!b) return;
+    const id = b.dataset.pl, name = PL[id] || "Playlist";
+    closeMenu && closeMenu();
+    if (Spotify.connected()) { go("playlists", true); window.scrollTo(0, 0); openPlaylist({ id, name }); }
+    else location.href = "https://open.spotify.com/playlist/" + id;
+  });
+
   // ---------- anchor + trail ----------
   function paintAnchor() {
     const a = $("anchor");
     if (state.anchor) {
       const t = state.anchor;
       a.innerHTML = `<div class="ahead"><span class="eyebrow">Mixing out of</span><button class="link" type="button" id="all">All tracks</button></div><span class="t">${esc(t.title)}</span>
-        <span class="m">${esc(t.artist)} · ${t.key} ${NAMES[t.key]} · ${t.tempo || "–"} tempo</span>
+        <span class="m">${esc(t.artist)} · ${t.key} ${NAMES[t.key]} · ${t.tempo || "–"} tempo</span>${whereHtml(t)}
         <span class="acts"><button class="btn ghost" type="button" id="aAdd">${crate.includes(t.id) ? "In crate ✓" : "+ Crate"}</button>${state.trail.length > 1 ? '<button class="btn ghost" type="button" id="back1">‹ Back one</button>' : ""}<button class="btn ghost" type="button" id="clr">${state.trail.length > 1 ? "Clear thread" : "Clear track"}</button></span>`;
       $("clr").onclick = () => { state.trail = []; state.anchor = null; $("tmin").value = ""; $("tmax").value = ""; saveState(); render(); };
       $("aAdd").onclick = () => { toggleCrate(t.id); render(); };
@@ -629,6 +645,7 @@
     $("pvKey").innerHTML = rec && rec.key
       ? `<span class="k" style="background:${col(parseInt(rec.key))}">${rec.key}</span>${NAMES[rec.key]}${rec.tempo ? " · " + rec.tempo + " tempo" : ""}`
       : "No key yet in your library";
+    $("pvWhere").innerHTML = rec ? whereHtml(rec) : "";
     $("pvDev").textContent = "";
     $("pvDevName").textContent = np.device || "Unknown device";
     $("pvDevIco").innerHTML = devIcon(np.deviceType); paintVolume();
@@ -847,7 +864,7 @@
   function openMenu(t) {
     const sh = $("sheet");
     const inCrate = crate.includes(t.id);
-    sh.innerHTML = `<div class="grab"></div><div class="sh-t">${esc(t.title)}</div><div class="sh-a">${esc(t.artist)}${t.key ? ` · ${t.key} ${NAMES[t.key]}` : ""}${t.tempo ? ` · ${t.tempo} tempo` : ""}</div>
+    sh.innerHTML = `<div class="grab"></div><div class="sh-t">${esc(t.title)}</div><div class="sh-a">${esc(t.artist)}${t.key ? ` · ${t.key} ${NAMES[t.key]}` : ""}${t.tempo ? ` · ${t.tempo} tempo` : ""}</div>${whereHtml(byId.get(t.id) || t)}
       <button class="item" data-a="play" type="button"><span>${IC.play}</span>Play now</button>
       <button class="item" data-a="queue" type="button"><span>${IC.queue}</span>Add to queue</button>
       <button class="item" data-a="crate" type="button"><span>${IC.crate}</span>${inCrate ? "Remove from crate" : "Add to crate"}</button>

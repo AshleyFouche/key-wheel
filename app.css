@@ -391,3 +391,21 @@ input[type=number]{width:58px;border-radius:999px;padding:7px 10px;text-align:ce
 .ahead{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .link{background:none;border:0;padding:0;color:var(--accent);font-size:12.5px;font-weight:600;cursor:pointer}
 .add.in{background:color-mix(in srgb,var(--accent) 18%,var(--surface));border-color:color-mix(in srgb,var(--accent) 55%,var(--line));color:var(--accent)}
+
+/* where to find a track */
+.where{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:6px}
+.where .wl{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-right:2px}
+.where .wl:not(:first-child){margin-left:6px}
+.wchip{font-size:11.5px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:3px 9px;cursor:pointer;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wchip:active{border-color:var(--accent)}
+#pvWhere .where{justify-content:center}
+.sheet .where{margin:0 0 8px}
+/* iPhone: keep the tab bar pinned to the bottom on short pages */
+html{min-height:100%}
+body{min-height:100vh;min-height:100lvh}
+
+.where{display:grid;gap:5px}
+.wrow{display:flex;flex-wrap:wrap;gap:5px;align-items:center;min-width:0}
+.where .wl{margin-left:0!important;min-width:58px}
+#pvWhere .wrow{justify-content:center}
+#pvWhere .wl{min-width:0}

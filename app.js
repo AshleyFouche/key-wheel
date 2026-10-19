@@ -511,7 +511,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.20";
+  const APP_VERSION = "1.21";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -729,11 +729,32 @@
   // ---------- playback + now playing ----------
   let np = null, follow = ls.get("kw.follow", false), npTimer = null, lastNpId = null;
   const npBar = $("np");
+  // "Play now". Spotify's direct play command (replace everything with this track) has been knocking
+  // the iPhone off Spotify while it plays in the background, but queue-then-skip works reliably.
+  // So when something is already playing, queue the track and skip to it. Only use the direct
+  // command to wake Spotify when nothing is playing.
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  async function playNow(id) {
+    if (!np || !np.playing) { await Spotify.play(id); return; }
+    const wasHanded = handed;
+    await Spotify.queue(id);
+    await sleep(300);
+    await Spotify.next();
+    for (let i = 0; i < 4; i++) {
+      await sleep(700);
+      const st = await Spotify.playerState().catch(() => null);
+      if (st && st.id === id) break;
+      if (st && wasHanded && st.id === wasHanded) await Spotify.next();   // our queued track was sitting behind it
+    }
+    // A track the app had already handed to Spotify got skipped on the way: put it back at the front.
+    if (wasHanded) { handed = null; appQ = appQ.filter(x => x !== wasHanded); appQ.unshift(wasHanded); saveQ(); }
+  }
   async function playTrack(t) {
     if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return; }
     if (!Spotify.canPlay()) { showReconnect(); return; }
     try {
-      await Spotify.play(t.id); toast("Playing: " + t.title);
+      toast("Playing: " + t.title);
+      await playNow(t.id);
       setTimeout(pollNow, 900);
     } catch (e) { playError(e); }
   }
@@ -853,7 +874,7 @@
   async function smartNext() {
     try {
       if (!handed && appQ.length) {
-        const id = appQ.shift(); saveQ(); await Spotify.play(id);
+        const id = appQ.shift(); saveQ(); await playNow(id);
         toast("Playing: " + recOf(id, qMeta.get(id)).title); setTimeout(pollNow, 900); return;
       }
       if (!handed) {
@@ -861,7 +882,7 @@
         up = up.filter(t => !np || t.id !== np.id);
         if (!up.length) {
           const cur = np && byId.get(np.id), s = cur && cur.key ? suggest(cur, 1)[0] : null;
-          if (s) { await Spotify.play(s.t.id); toast("Nothing was lined up — playing " + s.t.title); setTimeout(pollNow, 900); return; }
+          if (s) { await playNow(s.t.id); toast("Nothing was lined up — playing " + s.t.title); setTimeout(pollNow, 900); return; }
         }
       }
       await Spotify.next(); setTimeout(pollNow, 700);

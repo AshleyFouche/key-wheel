@@ -205,7 +205,32 @@
     }).filter(Boolean);
   }
 
+  // ---- catalogue: track, album, artist ----
+  const img = imgs => imgs && imgs.length ? imgs[0].url : "";
+  async function getTrack(id) {
+    const t = await api("/tracks/" + id);
+    return { id: t.id, title: t.name, artists: (t.artists || []).map(a => ({ id: a.id, name: a.name })), album: t.album ? { id: t.album.id, name: t.album.name } : null };
+  }
+  async function getAlbum(id) {
+    const a = await api("/albums/" + id);
+    let tracks = (a.tracks && a.tracks.items) || [], next = a.tracks && a.tracks.next;
+    while (next) { const j = await api(next); tracks = tracks.concat(j.items || []); next = j.next; }
+    return {
+      id: a.id, name: a.name, image: img(a.images), year: (a.release_date || "").slice(0, 4), type: a.album_type,
+      artists: (a.artists || []).map(x => ({ id: x.id, name: x.name })),
+      tracks: tracks.filter(t => t && t.id).map(t => ({ id: t.id, title: t.name, artist: (t.artists || []).map(x => x.name).join(", ") }))
+    };
+  }
+  async function getArtist(id) {
+    const [a, al] = await Promise.all([api("/artists/" + id), api(`/artists/${id}/albums?include_groups=album,single,compilation&limit=50`)]);
+    const seen = new Set();
+    const albums = (al.items || []).filter(x => { const k = (x.name || "").toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+      .map(x => ({ id: x.id, name: x.name, image: img(x.images), year: (x.release_date || "").slice(0, 4), type: x.album_type }));
+    return { id: a.id, name: a.name, image: img(a.images), genres: a.genres || [], albums };
+  }
+
   window.Spotify = {
+    getTrack, getAlbum, getArtist,
     recentlyPlayed, playerState, upNext, seek, next, previous,
     canPlay, play, queue, pause, resume, nowPlaying, devices,
     login, handleRedirect, connected: () => !!store.get(), logout: () => store.clear(),

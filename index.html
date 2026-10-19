@@ -61,8 +61,8 @@
         <button type="button" id="pvNext" aria-label="Next track">⏭</button>
       </div>
       <button class="btn" id="pvMix" type="button">Mix out of this</button>
-      <h2>Up next in Spotify</h2>
-      <p class="note">Keys from your library, with how each one mixes from what's playing.</p>
+      <div class="qhead"><h2>Up next</h2><button class="btn ghost danger" id="qClear" type="button" hidden>Clear queue</button></div>
+      <p class="note">Swipe right on any track to queue it. Drag <b>≡</b> to reorder, tap <b>✕</b> to remove. Each label shows how the track mixes from the one before it.</p>
       <div class="list" id="pvQueue"></div>
     </div>
   </section>
@@ -72,6 +72,12 @@
     <h2>Flows</h2>
     <p class="note">Everything you play through Spotify, grouped into flows. A gap of more than an hour starts a new flow. Turn any flow into a crate, then save it as a playlist.</p>
     <div id="histWrap"></div>
+  </section>
+
+  <!-- BROWSE (artist / album) -->
+  <section class="view" id="view-browse" hidden>
+    <button class="btn ghost back" id="browseBack" type="button">‹ Back</button>
+    <div id="browseWrap"></div>
   </section>
 
   <!-- CRATE -->
@@ -146,12 +152,14 @@
 
     <details><summary>Playing through Spotify</summary>
       <ul>
-        <li>Each track has two buttons. The first talks to Spotify; the <b>+</b> adds it to your crate.</li>
-        <li>With <b>▶ Play now</b> selected, the first button plays the track straight away. With <b>＋ Queue</b> selected it becomes <b>⤓</b> and adds the track to Spotify's queue instead.</li>
+        <li><b>▶</b> plays a track straight away. <b>+</b> adds it to your crate. <b>⋯</b> opens more options: queue, mix out of it, go to the artist or album, or open it in Spotify.</li>
+        <li><b>Swipe right</b> on any track to add it to your queue.</li>
+        <li>Your queue lives in ASH//FLOW, so you can reorder it and remove tracks, which Spotify doesn't let other apps do. The app hands Spotify one track at a time, so keep ASH//FLOW open while you play. The next track (marked "Sent to Spotify") can't be removed.</li>
         <li>Music plays on whichever device Spotify is using: your phone, a speaker, AirPods or your laptop. Spotify needs to be open, or recently used, somewhere.</li>
         <li>The bar at the bottom shows what's playing, with its key. <b>Mix out of this</b> makes it your starting track.</li>
         <li><b>Follow</b>: every new track Spotify plays becomes the track you mix out of and joins your thread automatically.</li>
-        <li>The <b>Playing</b> tab shows large artwork, a progress bar you can drag, skip buttons, and <b>Up next</b> with how each queued track mixes from what's playing. A clash shows as <b>Key clash</b>.</li>
+        <li>The <b>Playing</b> tab shows large artwork, a progress bar you can drag, skip buttons, and <b>Up next</b>, your queue, labelled with how each track mixes from the one before. A clash shows as <b>Key clash</b>.</li>
+        <li>Tap an artist or album from the <b>⋯</b> menu to see their tracks and releases, with keys from your library where you have them.</li>
       </ul>
     </details>
 
@@ -228,9 +236,7 @@
   </div>
   <div class="np-acts">
     <button class="chip" id="npMix" type="button">Mix out of this</button>
-    <div class="chip-seg" role="radiogroup" aria-label="What the play buttons do">
-      <button type="button" data-mode="play" class="on">▶ Play now</button><button type="button" data-mode="queue">＋ Queue</button>
-    </div>
+    <button class="chip" id="npQueue" type="button">Queue · 0</button>
     <button class="chip" id="npFollow" type="button" aria-pressed="false">Follow</button>
   </div>
 </div>
@@ -243,6 +249,8 @@
   <button data-view="more" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>More</button>
 </nav>
 <div class="toast" id="toast" role="status" hidden></div>
+<div class="sheet-bg" id="sheetBg" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Track options" hidden></div>
 
 <script src="config.js"></script>
 <script src="spotify.js"></script>

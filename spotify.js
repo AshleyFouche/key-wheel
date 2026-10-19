@@ -177,7 +177,28 @@
     };
   }
 
+  const trackOf = t => t && t.type === "track" ? {
+    id: t.id, title: t.name, artist: (t.artists || []).map(a => a.name).join(", "),
+    art: t.album && t.album.images && t.album.images.length ? t.album.images[t.album.images.length - 1].url : "",
+    artLarge: t.album && t.album.images && t.album.images.length ? t.album.images[0].url : "",
+    album: t.album ? t.album.name : "", duration: t.duration_ms || 0
+  } : null;
+  async function playerState() {
+    const j = await api("/me/player");
+    if (!j || !j.item) return null;
+    const t = trackOf(j.item); if (!t) return null;
+    return Object.assign(t, { playing: !!j.is_playing, progress: j.progress_ms || 0, at: Date.now(), device: j.device ? j.device.name : "" });
+  }
+  async function upNext() {
+    const j = await api("/me/player/queue");
+    return (j.queue || []).map(trackOf).filter(Boolean);
+  }
+  const seek = ms => api("/me/player/seek?position_ms=" + Math.max(0, Math.round(ms)), { method: "PUT" });
+  const next = () => api("/me/player/next", { method: "POST" });
+  const previous = () => api("/me/player/previous", { method: "POST" });
+
   window.Spotify = {
+    playerState, upNext, seek, next, previous,
     canPlay, play, queue, pause, resume, nowPlaying, devices,
     login, handleRedirect, connected: () => !!store.get(), logout: () => store.clear(),
     me, myPlaylists, playlistTracks, createPlaylist, addTracks, configured: () => !!window.CONFIG.spotifyClientId

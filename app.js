@@ -451,7 +451,7 @@
     if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return; }
     if (!Spotify.canPlay()) { showReconnect(); return; }
     try {
-      if (playMode === "queue") { await Spotify.queue(t.id); toast("Queued: " + t.title); }
+      if (playMode === "queue") { await Spotify.queue(t.id); toast("Queued: " + t.title); setTimeout(loadUpNext, 800); }
       else { await Spotify.play(t.id); toast("Playing: " + t.title); }
       setTimeout(pollNow, 900);
     } catch (e) { playError(e); }
@@ -500,21 +500,91 @@
   async function pollNow() {
     if (!Spotify.connected() || !Spotify.canPlay() || document.visibilityState !== "visible") return;
     try {
-      np = await Spotify.nowPlaying();
-      if (np && !np.none && np.id !== lastNpId) {
+      np = await Spotify.playerState();
+      if (np && np.id !== lastNpId) {
         lastNpId = np.id;
+        if (!$("view-playing").hidden) loadUpNext();
         if (follow) { const rec = byId.get(np.id); if (rec && rec.key && (!state.anchor || state.anchor.id !== rec.id)) setAnchor(rec, false, true); }
       }
-      paintNp();
+      paintNp(); paintPlaying();
     } catch (e) { if (e.code === "auth") paintSpotifyBtn(); }
   }
-  function startPolling() { clearInterval(npTimer); pollNow(); npTimer = setInterval(pollNow, 5000); }
+  function startPolling() {
+    clearInterval(npTimer); pollNow();
+    npTimer = setInterval(pollNow, !$("view-playing").hidden ? 3000 : 5000);
+  }
+
+  // ---------- Playing tab ----------
+  const fmt = ms => { ms = Math.max(0, ms || 0); const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+  let seeking = false;
+  const posNow = () => !np ? 0 : Math.min(np.duration || 0, np.progress + (np.playing ? Date.now() - (np.at || Date.now()) : 0));
+  function paintProgress() {
+    if (!np || seeking || $("view-playing").hidden) return;
+    const pos = posNow(), d = np.duration || 1, v = Math.round(pos / d * 1000), sk = $("pvSeek");
+    sk.value = v; sk.style.setProperty("--pct", (v / 10) + "%");
+    $("pvPos").textContent = fmt(pos); $("pvLeft").textContent = "-" + fmt(d - pos);
+  }
+  setInterval(paintProgress, 500);
+  function paintPlaying() {
+    if ($("view-playing").hidden) return;
+    $("pvEmpty").hidden = !!np; $("pv").hidden = !np;
+    if (!np) return;
+    const rec = byId.get(np.id);
+    $("pvArt").style.backgroundImage = np.artLarge || np.art ? `url("${np.artLarge || np.art}")` : "";
+    $("pvTitle").textContent = np.title; $("pvArtist").textContent = np.artist;
+    $("pvKey").innerHTML = rec && rec.key
+      ? `<span class="k" style="background:${col(parseInt(rec.key))}">${rec.key}</span>${NAMES[rec.key]}${rec.tempo ? " · " + rec.tempo + " tempo" : ""}`
+      : "No key yet in your library";
+    $("pvDev").textContent = np.device ? "on " + np.device : "";
+    $("pvPP").textContent = np.playing ? "❚❚" : "▶";
+    $("pvMix").disabled = !(rec && rec.key);
+    paintProgress();
+  }
+  const seekEl = $("pvSeek");
+  seekEl.addEventListener("input", () => {
+    if (!np) return; seeking = true;
+    const pos = seekEl.value / 1000 * (np.duration || 0);
+    seekEl.style.setProperty("--pct", (seekEl.value / 10) + "%");
+    $("pvPos").textContent = fmt(pos); $("pvLeft").textContent = "-" + fmt((np.duration || 0) - pos);
+  });
+  seekEl.addEventListener("change", async () => {
+    if (!np) { seeking = false; return; }
+    const pos = seekEl.value / 1000 * (np.duration || 0);
+    np.progress = pos; np.at = Date.now(); seeking = false;
+    try { await Spotify.seek(pos); setTimeout(pollNow, 900); } catch (e) { playError(e); }
+  });
+  $("pvPP").onclick = () => $("npPP").click();
+  $("pvPrev").onclick = async () => { try { await Spotify.previous(); setTimeout(pollNow, 700); } catch (e) { playError(e); } };
+  $("pvNext").onclick = async () => { try { await Spotify.next(); setTimeout(pollNow, 700); } catch (e) { playError(e); } };
+  $("pvMix").onclick = () => { const rec = np && byId.get(np.id); if (rec && rec.key) setAnchor(rec); };
+  async function loadUpNext() {
+    const box = $("pvQueue");
+    if (!np) { box.innerHTML = ""; return; }
+    try {
+      const items = (await Spotify.upNext()).slice(0, 10);
+      const cur = byId.get(np.id), rel = cur && cur.key ? relations(cur.key) : null;
+      box.innerHTML = items.length ? "" : '<p class="note">Spotify\'s queue is empty. Switch to ＋ Queue and tap ⤓ on tracks to line them up.</p>';
+      items.forEach(it => {
+        const rec = byId.get(it.id) || { id: it.id, title: it.title, artist: it.artist, tempo: 0, key: null };
+        const r = rowEl(rec, null, setAnchor);
+        const lab = document.createElement("div"); lab.className = "rel";
+        const m = rel && rec.key ? rel[rec.key] : null;
+        lab.textContent = !rec.key ? "No key yet" : m ? MOVE_NAME[m] : "Key clash";
+        if (!m) lab.style.color = rec.key ? "var(--warn)" : "var(--muted)";
+        r.querySelector(".tt").prepend(lab);
+        box.appendChild(r);
+      });
+    } catch (e) { box.innerHTML = '<p class="note">Couldn\'t load Spotify\'s queue.</p>'; }
+  }
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pollNow(); });
 
   // ---------- tabs + spotify button ----------
   function go(v) {
     document.querySelectorAll(".view").forEach(s => s.hidden = s.id !== "view-" + v);
     document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === v));
+    document.body.classList.toggle("on-playing", v === "playing");
+    if (v === "playing") { paintPlaying(); loadUpNext(); if (Spotify.connected() && Spotify.canPlay()) startPolling(); }
+    else if (typeof npTimer !== "undefined" && npTimer && Spotify.canPlay()) startPolling();
     if (v === "crate") paintCrate();
     if (v === "playlists") paintPlaylists();
     if (v === "more") paintMore();

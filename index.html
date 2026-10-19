@@ -41,6 +41,32 @@
     <button class="btn ghost more" id="more" type="button" hidden>Show more</button>
   </section>
 
+  <!-- PLAYING -->
+  <section class="view" id="view-playing" hidden>
+    <div id="pvEmpty" class="note">Nothing playing in Spotify right now. Tap ▶ on any track, or start something in Spotify.</div>
+    <div id="pv" hidden>
+      <div class="pv-art" id="pvArt"></div>
+      <div class="pv-meta">
+        <div class="pv-t" id="pvTitle"></div>
+        <div class="pv-a" id="pvArtist"></div>
+        <div class="pv-k" id="pvKey"></div>
+      </div>
+      <div class="pv-prog">
+        <input type="range" id="pvSeek" min="0" max="1000" value="0" step="1" aria-label="Track position">
+        <div class="pv-times"><span id="pvPos">0:00</span><span id="pvDev"></span><span id="pvLeft">-0:00</span></div>
+      </div>
+      <div class="pv-ctrl">
+        <button type="button" id="pvPrev" aria-label="Previous track">⏮</button>
+        <button type="button" id="pvPP" class="big" aria-label="Play or pause">▶</button>
+        <button type="button" id="pvNext" aria-label="Next track">⏭</button>
+      </div>
+      <button class="btn" id="pvMix" type="button">Mix out of this</button>
+      <h2>Up next in Spotify</h2>
+      <p class="note">Keys from your library, with how each one mixes from what's playing.</p>
+      <div class="list" id="pvQueue"></div>
+    </div>
+  </section>
+
   <!-- CRATE -->
   <section class="view" id="view-crate" hidden>
     <h2>Crate in progress</h2>
@@ -115,6 +141,7 @@
 </div>
 <nav class="tabs" aria-label="Sections">
   <button data-view="wheel" class="on" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>Wheel</button>
+  <button data-view="playing" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l5.5-3.5z"/></svg>Playing</button>
   <button data-view="crate" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="16" height="13" rx="2"/><path d="M8 7V4h8v3"/></svg>Crate <span class="badge" id="crateBadge" hidden></span></button>
   <button data-view="playlists" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h12M4 11h12M4 16h7"/><circle cx="18" cy="17" r="2.5"/><path d="M20.5 17V7"/></svg>Playlists</button>
   <button data-view="more" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>More</button>

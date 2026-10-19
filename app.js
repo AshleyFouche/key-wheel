@@ -226,7 +226,8 @@
     const r = document.createElement("div"); r.className = "row";
     const m = rel && rel[t.key] && state.on[rel[t.key]] ? MOVE_NAME[rel[t.key]] : "";
     const pc = from ? pairCount(from.id, t.id) : 0;
-    const relLine = (m || pc) ? `<div class="rel">${m}${pc ? `<span class="mem">${m ? " · " : ""}★ played after this${pc > 1 ? " " + pc + "×" : ""}</span>` : ""}</div>` : "";
+    const dTxt = m && from && from.tempo && t.tempo ? " · " + (t.tempo === from.tempo ? "same tempo" : (t.tempo > from.tempo ? "+" : "") + (t.tempo - from.tempo)) : "";
+    const relLine = (m || pc) ? `<div class="rel">${m}${dTxt}${pc ? `<span class="mem">${m ? " · " : ""}★ played after this${pc > 1 ? " " + pc + "×" : ""}</span>` : ""}</div>` : "";
     const keyHtml = t.key ? `<span class="key" style="background:${col(parseInt(t.key))}">${t.key}</span>` : `<span class="key none">?</span>`;
     r.innerHTML = `${keyHtml}<span class="bpm">${t.tempo || "–"}</span>
       <span class="tt" role="button" tabindex="0">${relLine}<div>${esc(t.title)}${noteOf(t.id) ? ' <span class="hasnote" title="Has a note">✎</span>' : ""}</div><div class="a">${esc(t.artist)}</div></span>
@@ -248,7 +249,9 @@
   function paintList() {
     const { rows, rel, keyed, qq } = filtered();
     currentRows = rows;
-    $("count").textContent = `${rows.length.toLocaleString()} ${keyed ? "tracks in compatible keys" : (qq ? "tracks across your whole library" : "tracks, all keys")}`;
+    const dd = DIRS.find(d => d.id === state.dir);
+    $("count").textContent = `${rows.length.toLocaleString()} ${keyed ? "tracks in compatible keys" : (qq ? "tracks across your whole library" : "tracks, all keys")}` +
+      (keyed && state.anchor && state.dir !== "any" ? ` · ${dd.sym} ${dd.name} order: ${{ build: "tempo up, boosts, minor to major first", hold: "same tempo, same or next-door key first", cool: "tempo down, major to minor first" }[state.dir]}` : "");
     const list = $("list"); list.innerHTML = "";
     rows.slice(0, state.shown).forEach(t => list.appendChild(rowEl(t, rel, setAnchor, state.anchor)));
     $("more").hidden = rows.length <= state.shown;
@@ -276,16 +279,15 @@
     { id: "cool", name: "Cool", sym: "↓", tip: "Bringing it down — tempo down, major to minor, no boosts" }
   ];
   // Tempo range shown around the selected track, per direction.
-  const tempoWindow = t => ({ any: [-6, 6], build: [-1, 6], hold: [-3, 3], cool: [-6, 1] })[state.dir].map(d => t.tempo + d);
+  const tempoWindow = t => [t.tempo - 6, t.tempo + 6];   // direction re-orders; it never hides tracks
   function paintDir() {
     const box = $("dir"); if (!box) return;
     box.innerHTML = '<span class="eyebrow">Direction</span>' + DIRS.map(d =>
       `<button type="button" data-d="${d.id}" aria-pressed="${state.dir === d.id}" title="${d.tip}">${d.sym ? `<span aria-hidden="true">${d.sym}</span> ` : ""}${d.name}</button>`).join("");
     box.querySelectorAll("button").forEach(b => b.onclick = () => {
       state.dir = b.dataset.d; saveState();
-      if (state.anchor && state.anchor.tempo) { const [lo, hi] = tempoWindow(state.anchor); tmin.value = lo; tmax.value = hi; }
       state.shown = 60; render(); paintSuggest();
-      toast(DIRS.find(d => d.id === state.dir).tip);
+      toast(state.anchor || state.dir === "any" ? DIRS.find(d => d.id === state.dir).tip : "Now pick a track — direction ranks what comes after the track you're mixing out of");
     });
   }
 
@@ -454,7 +456,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.4";
+  const APP_VERSION = "1.5";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1178,7 +1180,9 @@
   // Higher is better. Hooks for set direction and transition memory.
   function scoreFor(from, t, m) {
     const dt = from.tempo && t.tempo ? t.tempo - from.tempo : 0;
-    let sc = (MOVE_W[m] || 0) + (1 - Math.min(Math.abs(dt), 8) / 8) * 0.8;
+    let sc = MOVE_W[m] || 0;
+    if (state.dir === "any" || !from.tempo || !t.tempo) sc += (1 - Math.min(Math.abs(dt), 8) / 8) * 0.8;
+    else { const target = { build: 3, hold: 0, cool: -3 }[state.dir]; sc += (1 - Math.min(Math.abs(dt - target), 6) / 6) * 1.2; }
     sc += dirBonus(from, t, m, dt);
     sc += memBonus(from.id, t.id);
     return sc;
@@ -1198,9 +1202,9 @@
   }
   function dirBonus(from, t, m, dt) {
     const toB = from.key.endsWith("A") && t.key.endsWith("B"), toA = from.key.endsWith("B") && t.key.endsWith("A");
-    if (state.dir === "build") return (dt >= 1 && dt <= 5 ? 0.6 : dt > 5 ? 0.25 : dt < 0 ? -0.5 : 0) + (m === "boost" ? 0.4 : 0) + (toB ? 0.2 : 0) + (m === "same" ? -0.15 : 0);
-    if (state.dir === "hold") return (Math.abs(dt) <= 2 ? 0.4 : Math.abs(dt) > 4 ? -0.4 : 0) + (m === "same" || m === "adj" ? 0.25 : 0) + (m === "boost" ? -0.3 : 0);
-    if (state.dir === "cool") return (dt <= -1 && dt >= -5 ? 0.6 : dt < -5 ? 0.25 : dt > 0 ? -0.5 : 0) + (m === "boost" ? -0.5 : 0) + (toA ? 0.2 : 0) + (m === "same" ? -0.15 : 0);
+    if (state.dir === "build") return (m === "boost" ? 0.4 : 0) + (toB ? 0.25 : 0) + (m === "same" ? -0.1 : 0) + (dt < 0 ? -0.4 : 0);
+    if (state.dir === "hold") return (m === "same" || m === "adj" ? 0.25 : 0) + (m === "boost" ? -0.5 : 0) + (m === "rel" || m === "diag" ? -0.15 : 0);
+    if (state.dir === "cool") return (m === "boost" ? -0.6 : 0) + (toA ? 0.25 : 0) + (m === "same" ? -0.1 : 0) + (dt > 0 ? -0.4 : 0);
     return 0;
   }
   // ---------- transition memory ----------

@@ -135,7 +135,7 @@
       for (const it of (j.items || [])) {
         const t = it.item || it.track;
         if (!t || t.type === "episode" || !t.id) continue;
-        out.push({ id: t.id, title: t.name, artist: (t.artists || []).map(a => a.name).join(", "), uri: t.uri, duration: t.duration_ms || 0 });
+        out.push({ id: t.id, title: t.name, artist: (t.artists || []).map(a => a.name).join(", "), uri: t.uri, duration: t.duration_ms || 0, art: t.album && t.album.images && t.album.images.length ? t.album.images[t.album.images.length - 1].url : "" });
       }
       url = j.next;
     }
@@ -291,8 +291,9 @@
         } catch (e) { /* try a smaller page size */ }
       }
     }
+    const smallImg = a.images && a.images.length ? a.images[a.images.length - 1].url : "";
     return {
-      id: a.id, name: a.name, image: img(a.images), year: (a.release_date || "").slice(0, 4), type: a.album_type, total,
+      id: a.id, name: a.name, image: img(a.images), smallImg, year: (a.release_date || "").slice(0, 4), type: a.album_type, total,
       artists: (a.artists || []).map(x => ({ id: x.id, name: x.name })),
       tracks: tracks.filter(t => t && t.id).map(t => ({ id: t.id, title: t.name, artist: (t.artists || []).map(x => x.name).join(", ") }))
     };
@@ -335,6 +336,7 @@
     searchAll, searchTracks, moveInPlaylist, getTrack, getAlbum, getArtist, transfer, setVolume,
     recentlyPlayed, playerState, upNext, seek, next, previous,
     log: () => LOG.slice(), rawPlayer: () => api("/me/player"),
+    trackArt: async id => { const t = await api("/tracks/" + id); return t.album && t.album.images && t.album.images.length ? t.album.images[t.album.images.length - 1].url : ""; },
     setDeviceChooser: f => { chooser = f; },
     liveAdd, liveRemove, liveMove, liveReplace, playPlaylist,
     canPlay, play, playContext, playList, setShuffle, queue, pause, resume, nowPlaying, devices,

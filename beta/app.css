@@ -481,3 +481,12 @@ pre.conn{white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--mono);fon
 .livechip{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--accent);margin-bottom:6px}
 .livechip span{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent)}
 .mrow.same{opacity:.6}
+/* rows with album art: art | title | BPM over key | play | + | more */
+.row{grid-template-columns:42px minmax(0,1fr) 40px 34px 34px 26px;gap:8px}
+.row.crow{grid-template-columns:20px 42px minmax(0,1fr) 40px 34px 34px 26px}
+.row.qrow{grid-template-columns:20px 42px minmax(0,1fr) 40px 34px 26px}
+.row .art{width:42px;height:42px;border-radius:6px;background:var(--raise) center/cover no-repeat;position:relative;overflow:hidden}
+.row .art:not(.has)::after{content:"♪";position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:16px;opacity:.6}
+.row .meta{display:grid;justify-items:center;gap:3px}
+.row .meta .bpm{font-size:11px;color:var(--muted);line-height:1}
+.row .meta .key{width:40px}

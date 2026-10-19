@@ -221,8 +221,46 @@
     else if (keyed) rows.sort((a, b) => (state.anchor ? Math.min(pairCount(state.anchor.id, b.id), 3) - Math.min(pairCount(state.anchor.id, a.id), 3) : 0) || rk(a) - rk(b) || (ref ? Math.abs(a.tempo - ref) - Math.abs(b.tempo - ref) : a.tempo - b.tempo));
     else if (qq) rows.sort((a, b) => rk(a) - rk(b) || kord(a.key) - kord(b.key) || a.tempo - b.tempo);
     else rows.sort((a, b) => kord(a.key) - kord(b.key) || a.tempo - b.tempo);
+    // Spotify sometimes has the same song twice (same title, artist, key and BPM): show it once.
+    const seenRow = new Set();
+    rows = rows.filter(t => { const k = normS(t.title) + "|" + normS(t.artist) + "|" + t.key + "|" + t.tempo; if (seenRow.has(k)) return false; seenRow.add(k); return true; });
     return { rows, rel, keyed, qq };
   }
+  // ---------- album art ----------
+  // Spotify no longer offers "look up many tracks at once", so artwork is collected from what the app already
+  // sees (your playlists, search, albums, what's playing) and, for anything left, fetched one track at a time
+  // when it scrolls into view.
+  let art = ls.get("kwb.art", {}), artDirty = false;
+  function noteArt(id, url) { if (id && url && art[id] !== url) { art[id] = url; artDirty = true; } }
+  setInterval(() => { if (artDirty) { artDirty = false; ls.set("kwb.art", art); } }, 4000);
+  const artQ = [], artTried = new Set(); let artBusy = 0;
+  function artPump() {
+    while (artBusy < 2 && artQ.length) {
+      const { id, el } = artQ.shift(); if (art[id]) { paintArt(el, id); continue; }
+      artBusy++;
+      Spotify.trackArt(id).then(u => { noteArt(id, u); paintArt(el, id); }).catch(() => {}).finally(() => { artBusy--; setTimeout(artPump, 120); });
+    }
+  }
+  const paintArt = (el, id) => { if (art[id] && el) { el.style.backgroundImage = `url("${art[id]}")`; el.classList.add("has"); } };
+  const artObs = "IntersectionObserver" in window ? new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return; artObs.unobserve(e.target);
+    const id = e.target.dataset.aid; if (art[id]) return paintArt(e.target, id);
+    if (artTried.has(id) || !Spotify.connected()) return; artTried.add(id); artQ.push({ id, el: e.target }); artPump();
+  }), { rootMargin: "200px" }) : null;
+  // Background: collect artwork from your own playlists (one request per 50 tracks), at most once a day.
+  async function syncArt() {
+    if (!Spotify.connected() || Date.now() - ls.get("kwb.artSync", 0) < 864e5) return;
+    ls.set("kwb.artSync", Date.now());
+    try {
+      const me = await Spotify.me(), pls = (await Spotify.myPlaylists()).filter(p => p && p.owner && p.owner.id === me.id);
+      for (const p of pls) {
+        try { (await Spotify.playlistTracks(p.id)).forEach(t => noteArt(t.id, t.art)); } catch (e) {}
+        await new Promise(r => setTimeout(r, 300));
+      }
+      document.querySelectorAll(".row .art:not(.has)").forEach(el => paintArt(el, el.dataset.aid));
+    } catch (e) {}
+  }
+
   function rowEl(t, rel, onPick, from) {
     const r = document.createElement("div"); r.className = "row";
     const m = rel && rel[t.key] && state.on[rel[t.key]] ? MOVE_NAME[rel[t.key]] : "";
@@ -230,12 +268,14 @@
     const dTxt = m && from && from.tempo && t.tempo ? " · " + (t.tempo === from.tempo ? "same BPM" : (t.tempo > from.tempo ? "+" : "") + (t.tempo - from.tempo) + " BPM") : "";
     const relLine = (m || pc) ? `<div class="rel">${m}${dTxt}${pc ? `<span class="mem">${m ? " · " : ""}★ played after this${pc > 1 ? " " + pc + "×" : ""}</span>` : ""}</div>` : "";
     const keyHtml = t.key ? `<span class="key" style="background:${col(parseInt(t.key))}">${t.key}</span>` : `<span class="key none">?</span>`;
-    r.innerHTML = `${keyHtml}<span class="bpm">${t.tempo || "–"}</span>
+    r.innerHTML = `<span class="art" data-aid="${esc(t.id)}"></span>
       <span class="tt" role="button" tabindex="0">${relLine}<div>${esc(t.title)}${noteOf(t.id) ? ' <span class="hasnote" title="Has a note">✎</span>' : ""}</div><div class="a">${esc(t.artist)}</div></span>
+      <span class="meta"><span class="bpm">${t.tempo || "–"}</span>${keyHtml}</span>
       <button class="play" type="button" aria-label="Play in Spotify">${IC.play}</button>
       <button class="add${crate.includes(t.id) ? " in" : ""}" type="button" aria-label="Add to crate">${crate.includes(t.id) ? "✓" : "+"}</button>
       <button class="more-btn" type="button" aria-label="More options">⋯</button>`;
     r._track = t;
+    { const a = r.querySelector(".art"); if (art[t.id]) paintArt(a, t.id); else if (t.art) { noteArt(t.id, t.art); paintArt(a, t.id); } else if (artObs) artObs.observe(a); }
     r.querySelector(".more-btn").onclick = () => openMenu(t);
     if (np && np.id === t.id) r.classList.add("now");
     r.dataset.tid = t.id;
@@ -455,6 +495,7 @@
     $("plBack").onclick = () => paintPlaylists(true);
     try {
       const tracks = await Spotify.playlistTracks(p.id);
+      tracks.forEach(t => noteArt(t.id, t.art));
       const recs = tracks.map(t => byId.get(t.id) || { id: t.id, title: t.title, artist: t.artist, tempo: 0, key: null });
       const known = recs.filter(r => r.key).length;
       w.querySelector(".note").textContent = `${tracks.length} tracks · ${known} with a key in your library${known < tracks.length ? ` · ${tracks.length - known} still need one: screenshot this playlist in Spotify's Mix view, send it to Claude, then tap Add keys` : ""}`;
@@ -512,7 +553,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.3";
+  const APP_VERSION = "2.4";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -862,7 +903,7 @@
       const fresh = await Spotify.playerState();
       // Spotify briefly reports "nothing playing" between tracks or when the phone's connection blips.
       // Keep showing the last track unless it has said so for 12 seconds straight.
-      if (fresh) { emptySince = 0; np = fresh; }
+      if (fresh) { emptySince = 0; np = fresh; noteArt(fresh.id, fresh.art); }
       else { if (!emptySince) emptySince = Date.now(); if (!np || Date.now() - emptySince >= 12000) np = null; }
       if (np && np.progress >= 30000 && loggedFor !== np.id) { loggedFor = np.id; addHistory([{ id: np.id, title: np.title, artist: np.artist, at: np.at - np.progress, src: "app" }]); }
       if (Date.now() - lastRecentSync > 120000) syncRecent();
@@ -1333,7 +1374,7 @@
     try {
       if (page.type === "album") {
         const a = page.data || (page.data = await Spotify.getAlbum(page.id));
-        a.tracks.forEach(t => qMeta.set(t.id, { title: t.title, artist: t.artist }));
+        a.tracks.forEach(t => { qMeta.set(t.id, { title: t.title, artist: t.artist }); noteArt(t.id, a.smallImg); });
         const known = a.tracks.filter(t => byId.get(t.id) && byId.get(t.id).key).length;
         w.innerHTML = `<div class="bhead"><div class="bimg" style="background-image:url('${esc(a.image)}')"></div><div><div class="bt">${esc(a.name)}</div>
           <div class="bs">${a.artists.map(x => `<a href="#" data-artist="${esc(x.id)}" style="color:inherit">${esc(x.name)}</a>`).join(", ")}${a.year ? " · " + a.year : ""} · ${a.total && a.total > a.tracks.length ? `showing ${a.tracks.length} of ${a.total} tracks` : a.tracks.length + " tracks"}</div>
@@ -1731,5 +1772,6 @@
     else if (res && res.error) toast("Spotify sign-in didn't finish: " + res.error, 5000);
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
     offerImport();
+    setTimeout(syncArt, 4000);
   })();
 })();

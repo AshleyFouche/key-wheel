@@ -153,7 +153,7 @@
     if (state.anchor) {
       const t = state.anchor;
       a.innerHTML = `<div class="ahead"><span class="eyebrow">Mixing out of</span><button class="link" type="button" id="all">All tracks</button></div><span class="t">${esc(t.title)}</span>
-        <span class="m">${esc(t.artist)} · ${t.key} ${NAMES[t.key]} · ${t.tempo || "–"} tempo</span>${whereHtml(t)}
+        <span class="m">${esc(t.artist)} · ${t.key} ${NAMES[t.key]} · ${t.tempo || "–"} tempo</span>${whereHtml(t)}${noteHtml(t.id)}
         <span class="acts"><button class="btn ghost" type="button" id="aAdd">${crate.includes(t.id) ? "In crate ✓" : "+ Crate"}</button>${state.trail.length > 1 ? '<button class="btn ghost" type="button" id="back1">‹ Back one</button>' : ""}<button class="btn ghost" type="button" id="clr">${state.trail.length > 1 ? "Clear thread" : "Clear track"}</button></span>`;
       $("clr").onclick = () => { state.trail = []; state.anchor = null; $("tmin").value = ""; $("tmax").value = ""; saveState(); render(); };
       $("aAdd").onclick = () => { toggleCrate(t.id); render(); };
@@ -215,17 +215,19 @@
     const kord = k => parseInt(k) * 2 + (k.endsWith("B") ? 1 : 0);
     const rk = t => rel && rel[t.key] && state.on[rel[t.key]] ? order[rel[t.key]] : 9;
     if (keyed && state.dir !== "any" && state.anchor) { const sc = new Map(rows.map(t => [t, scoreFor(state.anchor, t, rel[t.key])])); rows.sort((a, b) => sc.get(b) - sc.get(a)); }
-    else if (keyed) rows.sort((a, b) => rk(a) - rk(b) || (ref ? Math.abs(a.tempo - ref) - Math.abs(b.tempo - ref) : a.tempo - b.tempo));
+    else if (keyed) rows.sort((a, b) => (state.anchor ? Math.min(pairCount(state.anchor.id, b.id), 3) - Math.min(pairCount(state.anchor.id, a.id), 3) : 0) || rk(a) - rk(b) || (ref ? Math.abs(a.tempo - ref) - Math.abs(b.tempo - ref) : a.tempo - b.tempo));
     else if (qq) rows.sort((a, b) => rk(a) - rk(b) || kord(a.key) - kord(b.key) || a.tempo - b.tempo);
     else rows.sort((a, b) => kord(a.key) - kord(b.key) || a.tempo - b.tempo);
     return { rows, rel, keyed, qq };
   }
-  function rowEl(t, rel, onPick) {
+  function rowEl(t, rel, onPick, from) {
     const r = document.createElement("div"); r.className = "row";
     const m = rel && rel[t.key] && state.on[rel[t.key]] ? MOVE_NAME[rel[t.key]] : "";
+    const pc = from ? pairCount(from.id, t.id) : 0;
+    const relLine = (m || pc) ? `<div class="rel">${m}${pc ? `<span class="mem">${m ? " · " : ""}★ played after this${pc > 1 ? " " + pc + "×" : ""}</span>` : ""}</div>` : "";
     const keyHtml = t.key ? `<span class="key" style="background:${col(parseInt(t.key))}">${t.key}</span>` : `<span class="key none">?</span>`;
     r.innerHTML = `${keyHtml}<span class="bpm">${t.tempo || "–"}</span>
-      <span class="tt" role="button" tabindex="0">${m ? `<div class="rel">${m}</div>` : ""}<div>${esc(t.title)}</div><div class="a">${esc(t.artist)}</div></span>
+      <span class="tt" role="button" tabindex="0">${relLine}<div>${esc(t.title)}${noteOf(t.id) ? ' <span class="hasnote" title="Has a note">✎</span>' : ""}</div><div class="a">${esc(t.artist)}</div></span>
       <button class="play" type="button" aria-label="Play in Spotify">${IC.play}</button>
       <button class="add${crate.includes(t.id) ? " in" : ""}" type="button" aria-label="Add to crate">${crate.includes(t.id) ? "✓" : "+"}</button>
       <button class="more-btn" type="button" aria-label="More options">⋯</button>`;
@@ -246,7 +248,7 @@
     currentRows = rows;
     $("count").textContent = `${rows.length.toLocaleString()} ${keyed ? "tracks in compatible keys" : (qq ? "tracks across your whole library" : "tracks, all keys")}`;
     const list = $("list"); list.innerHTML = "";
-    rows.slice(0, state.shown).forEach(t => list.appendChild(rowEl(t, rel, setAnchor)));
+    rows.slice(0, state.shown).forEach(t => list.appendChild(rowEl(t, rel, setAnchor, state.anchor)));
     $("more").hidden = rows.length <= state.shown;
   }
   $("more").onclick = () => { state.shown += 60; paintList(); };
@@ -372,12 +374,14 @@
         const have = new Set((await Spotify.playlistTracks(exId)).map(t => t.id));
         const fresh = ids.filter(id => !have.has(id));
         if (fresh.length) await Spotify.addTracks(exId, fresh);
+        keepPairs(ids);
         const name = $("existingPl").selectedOptions[0].textContent;
         st.className = "status ok";
         st.innerHTML = `Added ${fresh.length} tracks to “${esc(name)}”${ids.length - fresh.length ? ` (${ids.length - fresh.length} ${ids.length - fresh.length === 1 ? "was" : "were"} already there)` : ""}. <a href="https://open.spotify.com/playlist/${esc(exId)}" target="_blank" rel="noopener">Open in Spotify</a>`;
       } else {
         const name = $("crateName").value.trim() || ("ASH//F crate · " + new Date().toLocaleDateString());
         const pl = await Spotify.createPlaylist(name, "Built in ASH//FLOW", ids);
+        keepPairs(ids);
         st.className = "status ok";
         st.innerHTML = `Saved “${esc(name)}” with ${ids.length} tracks. <a href="${esc(pl.external_urls?.spotify || "#")}" target="_blank" rel="noopener">Open in Spotify</a>`;
         plCache = null;
@@ -454,7 +458,7 @@
   }
   $("logout").onclick = () => { Spotify.logout(); plCache = null; clearInterval(npTimer); np = null; paintNp(); paintSpotifyBtn(); paintMore(); toast("Disconnected from Spotify"); };
   $("backup").onclick = () => {
-    const data = { app: "key-wheel", saved: new Date().toISOString(), extra: ls.get("kw.extra", []), history: ls.get("kw.history", []), crate, state: { key: state.key, on: state.on, dir: state.dir } };
+    const data = { app: "key-wheel", saved: new Date().toISOString(), extra: ls.get("kw.extra", []), history: ls.get("kw.history", []), notes, kept: ls.get("kw.kept", {}), crate, state: { key: state.key, on: state.on, dir: state.dir } };
     const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "ashflow-backup.json"; document.body.appendChild(a); a.click(); a.remove();
   };
@@ -463,7 +467,7 @@
     try {
       const d = JSON.parse(await f.text());
       if (d.app !== "key-wheel") throw new Error("not an ASH//FLOW backup");
-      ls.set("kw.extra", d.extra || []); if (d.history) ls.set("kw.history", d.history); crate = d.crate || []; saveCrate();
+      ls.set("kw.extra", d.extra || []); if (d.history) ls.set("kw.history", d.history); if (d.notes) { notes = d.notes; ls.set("kw.notes", notes); } if (d.kept) ls.set("kw.kept", d.kept); crate = d.crate || []; saveCrate();
       await loadLibrary(); crateOptions(); render(); paintMore(); toast("Backup restored");
     } catch (err) { toast("Couldn't restore: " + err.message); }
     e.target.value = "";
@@ -669,7 +673,7 @@
     $("pvKey").innerHTML = rec && rec.key
       ? `<span class="k" style="background:${col(parseInt(rec.key))}">${rec.key}</span>${NAMES[rec.key]}${rec.tempo ? " · " + rec.tempo + " tempo" : ""}`
       : "No key yet in your library";
-    $("pvWhere").innerHTML = rec ? whereHtml(rec) : "";
+    $("pvWhere").innerHTML = rec ? whereHtml(rec) + noteHtml(rec.id) : "";
     $("pvDev").textContent = "";
     $("pvDevName").textContent = np.device || "Unknown device";
     $("pvDevIco").innerHTML = devIcon(np.deviceType); paintVolume();
@@ -888,10 +892,11 @@
   function openMenu(t) {
     const sh = $("sheet");
     const inCrate = crate.includes(t.id);
-    sh.innerHTML = `<div class="grab"></div><div class="sh-t">${esc(t.title)}</div><div class="sh-a">${esc(t.artist)}${t.key ? ` · ${t.key} ${NAMES[t.key]}` : ""}${t.tempo ? ` · ${t.tempo} tempo` : ""}</div>${whereHtml(byId.get(t.id) || t)}
+    sh.innerHTML = `<div class="grab"></div><div class="sh-t">${esc(t.title)}</div><div class="sh-a">${esc(t.artist)}${t.key ? ` · ${t.key} ${NAMES[t.key]}` : ""}${t.tempo ? ` · ${t.tempo} tempo` : ""}</div>${whereHtml(byId.get(t.id) || t)}${noteHtml(t.id)}
       <button class="item" data-a="play" type="button"><span>${IC.play}</span>Play now</button>
       <button class="item" data-a="queue" type="button"><span>${IC.queue}</span>Add to queue</button>
       <button class="item" data-a="crate" type="button"><span>${IC.crate}</span>${inCrate ? "Remove from crate" : "Add to crate"}</button>
+      <button class="item" data-a="note" type="button"><span>✎</span>${noteOf(t.id) ? "Edit note" : "Add note"}</button>
       <button class="item" data-a="mix" type="button" ${t.key ? "" : "disabled"}><span>${IC.mix}</span>Mix out of this</button>
       <button class="item" data-a="artist" type="button"><span>${IC.artist}</span>Go to artist</button>
       <button class="item" data-a="album" type="button"><span>${IC.album}</span>Go to album</button>
@@ -902,6 +907,7 @@
     act("queue").onclick = () => { closeMenu(); enqueue(t); };
     act("crate").onclick = () => { closeMenu(); const inn = toggleCrate(t.id); toast(inn ? "Added to crate" : "Removed from crate"); render(); if (!$("view-crate").hidden) paintCrate(); };
     act("mix").onclick = () => { closeMenu(); setAnchor(t); };
+    act("note").onclick = () => editNote(t);
     act("open").onclick = () => { closeMenu(); location.href = "https://open.spotify.com/track/" + t.id; };
     const needSpotify = () => { if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return false; } return true; };
     act("album").onclick = async () => {
@@ -1131,7 +1137,41 @@
     if (state.dir === "cool") return (dt <= -1 && dt >= -5 ? 0.6 : dt < -5 ? 0.25 : dt > 0 ? -0.5 : 0) + (m === "boost" ? -0.5 : 0) + (toA ? 0.2 : 0) + (m === "same" ? -0.15 : 0);
     return 0;
   }
-  let memBonus = () => 0;   // transition memory (see below)
+  // ---------- transition memory ----------
+  // Pairs you've actually played back to back (within 20 minutes), plus pairs from crates you've saved.
+  let memCache = null, memSig = "";
+  function pairs() {
+    const h = ls.get("kw.history", []), kept = ls.get("kw.kept", {});
+    const sig = h.length + ":" + (h.length ? h[h.length - 1].at : 0) + ":" + Object.keys(kept).length;
+    if (memCache && sig === memSig) return memCache;
+    const m = new Map(), bump = (a, b, n) => { if (!a || !b || a === b) return; if (!m.has(a)) m.set(a, new Map()); const x = m.get(a); x.set(b, (x.get(b) || 0) + n); };
+    for (let i = 1; i < h.length; i++) if (h[i].at - h[i - 1].at <= 20 * 60e3) bump(h[i - 1].id, h[i].id, 1);
+    Object.entries(kept).forEach(([k, n]) => { const [a, b] = k.split(">"); bump(a, b, n); });
+    memCache = m; memSig = sig; return m;
+  }
+  const pairCount = (a, b) => (pairs().get(a) || new Map()).get(b) || 0;
+  const memBonus = (a, b) => Math.min(pairCount(a, b), 3) * 0.25;
+  function keepPairs(ids) {
+    const kept = ls.get("kw.kept", {});
+    for (let i = 1; i < ids.length; i++) { const k = ids[i - 1] + ">" + ids[i]; kept[k] = (kept[k] || 0) + 1; }
+    ls.set("kw.kept", kept);
+  }
+  // ---------- notes ----------
+  let notes = ls.get("kw.notes", {});
+  const noteOf = id => notes[id] || "";
+  const noteHtml = id => noteOf(id) ? `<div class="tnote">✎ ${esc(noteOf(id))}</div>` : "";
+  function editNote(t) {
+    const sh = $("sheet");
+    sh.innerHTML = `<div class="grab"></div><div class="sh-t">Note for ${esc(t.title)}</div><div class="sh-a">Cue points, what it mixes well with, how the crowd took it — anything.</div>
+      <textarea id="noteBox" rows="4" maxlength="400" placeholder="e.g. Mix in at the second breakdown. Great after 'Sad Piano House'.">${esc(noteOf(t.id))}</textarea>
+      <div class="acts"><button class="btn" type="button" id="noteSave">Save note</button>${noteOf(t.id) ? '<button class="btn ghost danger" type="button" id="noteDel">Delete note</button>' : ""}<button class="btn ghost" type="button" id="noteCancel">Cancel</button></div>`;
+    sh.hidden = false; $("sheetBg").hidden = false;
+    setTimeout(() => $("noteBox").focus(), 50);
+    const done = msg => { ls.set("kw.notes", notes); closeMenu(); render(); if (!$("view-playing").hidden) { paintPlaying(); paintSuggest(); } if (!$("view-history").hidden) paintHistory(); toast(msg); };
+    $("noteSave").onclick = () => { const v = $("noteBox").value.trim(); if (v) notes[t.id] = v; else delete notes[t.id]; done(v ? "Note saved" : "Note removed"); };
+    if ($("noteDel")) $("noteDel").onclick = () => { delete notes[t.id]; done("Note removed"); };
+    $("noteCancel").onclick = () => closeMenu();
+  }
   const tempoDelta = (from, t) => { const d = from.tempo && t.tempo ? t.tempo - from.tempo : 0; return d ? (d > 0 ? "+" : "") + d + " tempo" : "same tempo"; };
 
   // ---------- heads-up before the track ends ----------
@@ -1162,7 +1202,7 @@
     html += `</span><button type="button" class="hx" aria-label="Dismiss">${IC.close}</button></div>`;
     if (st.mode !== "ok" && st.cur && st.cur.key) {
       const sug = suggest(st.cur, 3);
-      html += sug.map(x => `<div class="hsug"><span class="k" style="background:${col(parseInt(x.t.key))}">${x.t.key}</span><span class="ht"><b>${esc(x.t.title)}</b><small>${esc(x.t.artist)} · ${x.t.tempo || "–"} · ${MOVE_NAME[x.m]}</small></span><button type="button" class="hq" data-id="${esc(x.t.id)}">${st.mode === "clash" && !handed ? "Play next" : "Queue"}</button></div>`).join("");
+      html += sug.map(x => `<div class="hsug"><span class="k" style="background:${col(parseInt(x.t.key))}">${x.t.key}</span><span class="ht"><b>${esc(x.t.title)}</b><small>${esc(x.t.artist)} · ${x.t.tempo || "–"} · ${MOVE_NAME[x.m]}${pairCount(st.cur.id, x.t.id) ? ' · <span class="mem">★ played after</span>' : ""}</small></span><button type="button" class="hq" data-id="${esc(x.t.id)}">${st.mode === "clash" && !handed ? "Play next" : "Queue"}</button></div>`).join("");
       if (!sug.length) html += '<div class="hsug"><small>No close matches in your library for this one.</small></div>';
     }
     box.innerHTML = html;
@@ -1186,10 +1226,10 @@
     const d = DIRS.find(d => d.id === state.dir);
     $("sugNote").textContent = (state.dir === "any" ? "Best matches from what's playing, by key and tempo." : `Leaning ${d.name.toLowerCase()} ${d.sym} — change it on the Wheel tab.`) + " Swipe right to queue.";
     sug.forEach(x => {
-      const r = rowEl(x.t, null, setAnchor);
-      const lab = document.createElement("div"); lab.className = "rel";
-      lab.textContent = MOVE_NAME[x.m] + (tempoDelta(cur, x.t) ? " · " + tempoDelta(cur, x.t) : "");
-      r.querySelector(".tt").prepend(lab);
+      const r = rowEl(x.t, null, setAnchor, cur);
+      let lab = r.querySelector(".tt .rel");
+      if (!lab) { lab = document.createElement("div"); lab.className = "rel"; r.querySelector(".tt").prepend(lab); }
+      lab.insertAdjacentText("afterbegin", MOVE_NAME[x.m] + " · " + tempoDelta(cur, x.t) + (lab.textContent ? " · " : ""));
       box.appendChild(r);
     });
   }

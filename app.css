@@ -445,3 +445,11 @@ body.has-np.has-heads{padding-bottom:calc(var(--tabs-h) + env(safe-area-inset-bo
 .fchart .pt{cursor:pointer}
 .fchart .pt.on .d{stroke:var(--ink)}
 .fc-tip{position:absolute;transform:translateY(-100%);background:var(--raise);border:1px solid var(--line);color:var(--ink);font-size:12px;padding:5px 9px;border-radius:8px;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis;pointer-events:none;z-index:2}
+/* transition memory + notes */
+.rel .mem{color:var(--good)}
+.hasnote{color:var(--muted);font-size:12px}
+.tnote{font-size:13px;color:var(--ink);background:var(--raise);border-left:2px solid var(--accent);border-radius:6px;padding:6px 10px;margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere}
+#sheet textarea{width:100%;margin:10px 0;font:inherit;font-size:16px;resize:vertical}
+#sheet .acts{display:flex;gap:8px;flex-wrap:wrap}
+.hsug .mem{color:var(--good)}
+.gmem{color:var(--good)}

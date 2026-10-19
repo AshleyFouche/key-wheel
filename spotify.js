@@ -130,17 +130,21 @@
     return out;
   }
 
-  async function createPlaylist(name, description, trackIds) {
-    const pl = await api("/me/playlists", { method: "POST", body: JSON.stringify({ name, description, public: false }) });
+  async function addTracks(playlistId, trackIds) {
     const uris = trackIds.map(id => "spotify:track:" + id);
     for (let i = 0; i < uris.length; i += 100) {
-      await api(`/playlists/${pl.id}/items`, { method: "POST", body: JSON.stringify({ uris: uris.slice(i, i + 100) }) });
+      await api(`/playlists/${playlistId}/items`, { method: "POST", body: JSON.stringify({ uris: uris.slice(i, i + 100) }) });
     }
+  }
+
+  async function createPlaylist(name, description, trackIds) {
+    const pl = await api("/me/playlists", { method: "POST", body: JSON.stringify({ name, description, public: false }) });
+    await addTracks(pl.id, trackIds);
     return pl;
   }
 
   window.Spotify = {
     login, handleRedirect, connected: () => !!store.get(), logout: () => store.clear(),
-    me, myPlaylists, playlistTracks, createPlaylist, configured: () => !!window.CONFIG.spotifyClientId
+    me, myPlaylists, playlistTracks, createPlaylist, addTracks, configured: () => !!window.CONFIG.spotifyClientId
   };
 })();

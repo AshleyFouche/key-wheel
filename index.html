@@ -44,7 +44,7 @@
   <!-- CRATE -->
   <section class="view" id="view-crate" hidden>
     <h2>Crate in progress</h2>
-    <p class="note">Tap <b>+</b> on any track to add it here. Then name the crate and save it to Spotify as a new playlist.</p>
+    <p class="note">Tap <b>+</b> on any track to add it here. Drag the <b>≡</b> handle to change the order. Then save it to Spotify as a new playlist or add it to one you already have.</p>
     <div class="crate-actions">
       <button class="btn ghost" id="fromPath" type="button">Add my set path</button>
       <button class="btn ghost" id="fromList" type="button">Add current list (up to 100)</button>
@@ -53,8 +53,19 @@
     <div class="count" id="crateCount"></div>
     <div class="list" id="crateList"></div>
     <div class="save">
-      <label for="crateName">Playlist name</label>
-      <input id="crateName" type="text" placeholder="ASH//F 6 Main Peak · Techno · 128–132">
+      <div class="seg2" role="radiogroup" aria-label="Where to save">
+        <label><input type="radio" name="dest" value="new" checked> New playlist</label>
+        <label><input type="radio" name="dest" value="existing"> Add to existing</label>
+      </div>
+      <div id="destNew">
+        <label for="crateName">Playlist name</label>
+        <input id="crateName" type="text" placeholder="ASH//F 6 Main Peak · Techno · 128–132">
+      </div>
+      <div id="destExisting" hidden>
+        <label for="existingPl">Your playlist</label>
+        <select id="existingPl"><option value="">Loading your playlists…</option></select>
+        <p class="note">Tracks already in that playlist are skipped, so nothing is doubled up.</p>
+      </div>
       <label class="check"><input id="crateOrder" type="checkbox"> Sort by tempo before saving</label>
       <button class="btn" id="saveCrate" type="button">Save to Spotify</button>
       <p class="status" id="saveStatus" role="status"></p>

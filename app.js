@@ -58,7 +58,7 @@
     on: Object.assign({}, ALL_ON, saved.on || {}),
     anchor: null, trail: [], shown: 60
   };
-  const saveState = () => ls.set("kw.state", { key: state.key, on: state.on });
+  const saveState = () => ls.set("kw.state", { key: state.key, on: state.on, trail: state.trail.map(t => t.id), anchor: state.anchor ? state.anchor.id : null });
   let crate = ls.get("kw.crate", []);
   const saveCrate = () => { ls.set("kw.crate", crate); const b = $("crateBadge"); b.textContent = crate.length; b.hidden = !crate.length; };
 
@@ -138,7 +138,7 @@
       a.innerHTML = `<span class="eyebrow">Mixing out of</span><span class="t">${esc(t.title)}</span>
         <span class="m">${esc(t.artist)} · ${t.key} ${NAMES[t.key]} · ${t.tempo || "–"} tempo</span>
         <span class="acts"><button class="btn ghost" type="button" id="aAdd">${crate.includes(t.id) ? "In crate ✓" : "+ Crate"}</button><button class="btn ghost" type="button" id="clr">Clear track</button><button class="btn" type="button" id="all">All tracks</button></span>`;
-      $("clr").onclick = () => { state.trail = []; state.anchor = null; $("tmin").value = ""; $("tmax").value = ""; render(); };
+      $("clr").onclick = () => { state.trail = []; state.anchor = null; $("tmin").value = ""; $("tmax").value = ""; saveState(); render(); };
       $("aAdd").onclick = () => { toggleCrate(t.id); render(); };
     } else if (state.key) {
       a.innerHTML = `<span class="eyebrow">Selected key</span><span class="t">${state.key} · ${NAMES[state.key]}</span>
@@ -160,7 +160,16 @@
         b.onclick = () => { state.trail = state.trail.slice(0, i + 1); setAnchor(t, true); };
         li.appendChild(b); ol.appendChild(li);
       });
-      tr.appendChild(ol); a.appendChild(tr);
+      tr.appendChild(ol);
+      const sp = document.createElement("div"); sp.className = "acts";
+      sp.innerHTML = '<button class="btn" type="button" id="pathCrate">Save path as crate</button>';
+      tr.appendChild(sp); a.appendChild(tr);
+      $("pathCrate").onclick = () => {
+        crate = [...new Set(state.trail.map(t => t.id))]; saveCrate();
+        const first = state.trail[0], last = state.trail[state.trail.length - 1];
+        $("crateName").value = `ASH//F Set · ${first.title} → ${last.title}`.slice(0, 100);
+        go("crate"); window.scrollTo(0, 0); toast(`Crate set to your ${crate.length}-track path`);
+      };
     }
   }
 
@@ -242,10 +251,44 @@
     $("crateCount").textContent = recs.length ? `${recs.length} tracks · tempo ${Math.min(...recs.map(r => r.tempo || 999))}–${Math.max(...recs.map(r => r.tempo || 0))}` : "Empty for now.";
     recs.forEach(t => {
       const r = rowEl(t, null, setAnchor);
+      r.classList.add("crow"); r.dataset.id = t.id;
+      const h = document.createElement("span"); h.className = "drag"; h.textContent = "≡"; h.setAttribute("aria-label", "Drag to reorder");
+      r.prepend(h);
       r.querySelector(".add").onclick = () => { toggleCrate(t.id); paintCrate(); };
       list.appendChild(r);
     });
   }
+  // Drag to reorder (touch and mouse), using the ≡ handle.
+  (function enableDrag() {
+    const list = $("crateList");
+    let dragRow = null, scrollTimer = null, lastY = 0;
+    list.addEventListener("pointerdown", e => {
+      const h = e.target.closest(".drag"); if (!h) return;
+      dragRow = h.closest(".row"); dragRow.classList.add("dragging");
+      h.setPointerCapture(e.pointerId); lastY = e.clientY; e.preventDefault();
+      scrollTimer = setInterval(() => {
+        if (!dragRow) return;
+        const edge = 80, H = innerHeight;
+        if (lastY < edge) window.scrollBy(0, -12);
+        else if (lastY > H - edge - 70) window.scrollBy(0, 12);
+      }, 16);
+    });
+    list.addEventListener("pointermove", e => {
+      if (!dragRow) return;
+      lastY = e.clientY;
+      const rows = [...list.children].filter(r => r !== dragRow);
+      let before = null;
+      for (const r of rows) { const b = r.getBoundingClientRect(); if (e.clientY < b.top + b.height / 2) { before = r; break; } }
+      if (before) { if (dragRow.nextSibling !== before) list.insertBefore(dragRow, before); }
+      else if (list.lastChild !== dragRow) list.appendChild(dragRow);
+    });
+    const end = () => {
+      if (!dragRow) return;
+      dragRow.classList.remove("dragging"); dragRow = null; clearInterval(scrollTimer);
+      crate = [...list.children].map(r => r.dataset.id).filter(Boolean); saveCrate();
+    };
+    list.addEventListener("pointerup", end); list.addEventListener("pointercancel", end);
+  })();
   $("fromPath").onclick = () => { state.trail.forEach(t => { if (!crate.includes(t.id)) crate.push(t.id); }); saveCrate(); paintCrate(); toast(state.trail.length ? "Set path added" : "No set path yet — tap tracks on the wheel first"); };
   $("fromList").onclick = () => { currentRows.slice(0, 100).forEach(t => { if (!crate.includes(t.id)) crate.push(t.id); }); saveCrate(); paintCrate(); toast("Added the current list"); };
   $("clearCrate").onclick = () => {
@@ -253,19 +296,47 @@
     if (b.dataset.confirm) { crate = []; saveCrate(); paintCrate(); b.textContent = "Clear"; delete b.dataset.confirm; return; }
     b.dataset.confirm = "1"; b.textContent = "Tap again to clear"; setTimeout(() => { b.textContent = "Clear"; delete b.dataset.confirm; }, 3000);
   };
+  const dest = () => (document.querySelector('input[name="dest"]:checked') || {}).value || "new";
+  document.querySelectorAll('input[name="dest"]').forEach(r => r.onchange = () => {
+    $("destNew").hidden = dest() !== "new"; $("destExisting").hidden = dest() !== "existing";
+    if (dest() === "existing") fillExisting();
+  });
+  async function fillExisting() {
+    const selEx = $("existingPl");
+    if (!Spotify.connected()) { selEx.innerHTML = '<option value="">Connect Spotify first</option>'; return; }
+    try {
+      const me = await Spotify.me();
+      plCache = plCache || await Spotify.myPlaylists();
+      const own = plCache.filter(p => p && p.owner && p.owner.id === me.id);
+      const keep = selEx.value;
+      selEx.innerHTML = '<option value="">Choose a playlist</option>' + own.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
+      if (keep) selEx.value = keep;
+    } catch (e) { selEx.innerHTML = '<option value="">Couldn\'t load playlists</option>'; }
+  }
   $("saveCrate").onclick = async () => {
     const st = $("saveStatus"); st.className = "status";
     if (!crate.length) { st.textContent = "Add some tracks first."; st.className = "status err"; return; }
     if (!Spotify.connected()) { st.textContent = "Connect Spotify first (top right)."; st.className = "status err"; return; }
-    const name = $("crateName").value.trim() || ("ASH//F crate · " + new Date().toLocaleDateString());
     let ids = crate.slice();
     if ($("crateOrder").checked) ids.sort((a, b) => (byId.get(a)?.tempo || 0) - (byId.get(b)?.tempo || 0));
+    const toExisting = dest() === "existing", exId = $("existingPl").value;
+    if (toExisting && !exId) { st.textContent = "Choose which playlist to add to."; st.className = "status err"; return; }
     const btn = $("saveCrate"); btn.disabled = true; st.textContent = "Saving to Spotify…";
     try {
-      const pl = await Spotify.createPlaylist(name, "Built in Key Wheel", ids);
-      st.className = "status ok";
-      st.innerHTML = `Saved “${esc(name)}” with ${ids.length} tracks. <a href="${esc(pl.external_urls?.spotify || "#")}" target="_blank" rel="noopener">Open in Spotify</a>`;
-      plCache = null;
+      if (toExisting) {
+        const have = new Set((await Spotify.playlistTracks(exId)).map(t => t.id));
+        const fresh = ids.filter(id => !have.has(id));
+        if (fresh.length) await Spotify.addTracks(exId, fresh);
+        const name = $("existingPl").selectedOptions[0].textContent;
+        st.className = "status ok";
+        st.innerHTML = `Added ${fresh.length} tracks to “${esc(name)}”${ids.length - fresh.length ? ` (${ids.length - fresh.length} ${ids.length - fresh.length === 1 ? "was" : "were"} already there)` : ""}. <a href="https://open.spotify.com/playlist/${esc(exId)}" target="_blank" rel="noopener">Open in Spotify</a>`;
+      } else {
+        const name = $("crateName").value.trim() || ("ASH//F crate · " + new Date().toLocaleDateString());
+        const pl = await Spotify.createPlaylist(name, "Built in Key Wheel", ids);
+        st.className = "status ok";
+        st.innerHTML = `Saved “${esc(name)}” with ${ids.length} tracks. <a href="${esc(pl.external_urls?.spotify || "#")}" target="_blank" rel="noopener">Open in Spotify</a>`;
+        plCache = null;
+      }
     } catch (e) {
       st.className = "status err";
       st.textContent = e.code === "auth" ? "Spotify sign-in expired. Tap Connect Spotify and try again." : ("Couldn't save: " + e.message);
@@ -388,6 +459,9 @@
     buildWheel();
     const res = await Spotify.handleRedirect().catch(e => ({ error: e.message }));
     await loadLibrary();
+    const tIds = saved.trail || [];
+    state.trail = tIds.map(id => byId.get(id)).filter(t => t && t.key);
+    if (saved.anchor) { const a = byId.get(saved.anchor); if (a && a.key) { state.anchor = a; state.key = a.key; if (a.tempo) { tmin.value = a.tempo - 6; tmax.value = a.tempo + 6; } } }
     crateOptions(); saveCrate(); paintSpotifyBtn(); render();
     let v = "wheel"; try { v = sessionStorage.getItem("kw.view") || "wheel"; } catch (e) {}
     go(v);

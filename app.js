@@ -632,7 +632,9 @@
     $("pvKey").innerHTML = rec && rec.key
       ? `<span class="k" style="background:${col(parseInt(rec.key))}">${rec.key}</span>${NAMES[rec.key]}${rec.tempo ? " · " + rec.tempo + " tempo" : ""}`
       : "No key yet in your library";
-    $("pvDev").textContent = np.device ? "on " + np.device : "";
+    $("pvDev").textContent = "";
+    $("pvDevName").textContent = np.device || "Unknown device";
+    $("pvDevIco").textContent = devIcon(np.deviceType);
     $("pvPP").textContent = np.playing ? "❚❚" : "▶";
     $("pvMix").disabled = !(rec && rec.key);
     paintProgress();
@@ -653,6 +655,28 @@
   $("pvPP").onclick = () => $("npPP").click();
   $("pvPrev").onclick = async () => { try { await Spotify.previous(); setTimeout(pollNow, 700); } catch (e) { playError(e); } };
   $("pvNext").onclick = async () => { try { await Spotify.next(); setTimeout(pollNow, 700); } catch (e) { playError(e); } };
+  const devIcon = t => ({ Smartphone: "📱", Computer: "💻", Speaker: "🔊", TV: "📺", CastAudio: "🔊", CastVideo: "📺", AVR: "🔊", Tablet: "📱", Automobile: "🚗" }[t] || "🔈");
+  const devHint = d => d.type === "Smartphone" || d.type === "Computer" || d.type === "Tablet"
+    ? "Crossfade works here. Send the sound on with AirPlay, Bluetooth or a cable."
+    : "Spotify Connect: best sound quality, but no crossfade.";
+  $("pvDevice").onclick = async () => {
+    const sh = $("sheet");
+    sh.innerHTML = '<div class="grab"></div><div class="sh-t">Play on</div><div class="sh-a">Loading your devices…</div>';
+    sh.hidden = false; $("sheetBg").hidden = false;
+    try {
+      const ds = await Spotify.devices();
+      if (!ds.length) { sh.querySelector(".sh-a").textContent = "No devices found. Open Spotify on your phone or another device, then try again."; return; }
+      sh.innerHTML = '<div class="grab"></div><div class="sh-t">Play on</div><div class="sh-a">Spotify only lists devices that are switched on and have used Spotify recently.</div>' +
+        ds.map((d, i) => `<button class="item dev${d.is_active ? " on" : ""}" type="button" data-i="${i}"><span>${devIcon(d.type)}</span><div><div>${esc(d.name)}${d.is_active ? " · playing" : ""}</div><small>${esc(devHint(d))}</small></div></button>`).join("");
+      sh.querySelectorAll("[data-i]").forEach(b => b.onclick = async () => {
+        const d = ds[parseInt(b.dataset.i)];
+        closeMenu();
+        if (d.is_active) return;
+        try { await Spotify.transfer(d.id); toast("Now playing on " + d.name); setTimeout(pollNow, 1200); setTimeout(checkHanded, 2500); }
+        catch (e) { playError(e); }
+      });
+    } catch (e) { sh.querySelector(".sh-a").textContent = "Couldn't load devices: " + e.message; }
+  };
   $("pvTitle").onclick = () => { if (np && np.albumId) openAlbum(np.albumId); };
   $("pvArtist").onclick = () => { if (np) chooseArtist(np.artists); };
   $("npTitle").onclick = () => { if (np) { go("playing"); window.scrollTo(0, 0); } };

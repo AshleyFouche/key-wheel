@@ -148,6 +148,7 @@
   // ---- playback (Spotify Connect: plays on whichever device Spotify is active on) ----
   const canPlay = () => { const t = store.get(); return !!t && PLAYER_SCOPES.every(sc => (t.scope || "").includes(sc)); };
   async function devices() { return (await api("/me/player/devices")).devices || []; }
+  const transfer = deviceId => api("/me/player", { method: "PUT", body: JSON.stringify({ device_ids: [deviceId], play: true }) });
   async function pickDevice() {
     const ds = await devices();
     return ds.find(d => d.is_active) || ds.find(d => d.type === "Smartphone") || ds[0] || null;
@@ -188,7 +189,7 @@
     const j = await api("/me/player");
     if (!j || !j.item) return null;
     const t = trackOf(j.item); if (!t) return null;
-    return Object.assign(t, { playing: !!j.is_playing, progress: j.progress_ms || 0, at: Date.now(), device: j.device ? j.device.name : "" });
+    return Object.assign(t, { playing: !!j.is_playing, progress: j.progress_ms || 0, at: Date.now(), device: j.device ? j.device.name : "", deviceType: j.device ? j.device.type : "" });
   }
   async function upNext() {
     const j = await api("/me/player/queue");
@@ -263,7 +264,7 @@
   }
 
   window.Spotify = {
-    searchTracks, getTrack, getAlbum, getArtist,
+    searchTracks, getTrack, getAlbum, getArtist, transfer,
     recentlyPlayed, playerState, upNext, seek, next, previous,
     canPlay, play, queue, pause, resume, nowPlaying, devices,
     login, handleRedirect, connected: () => !!store.get(), logout: () => store.clear(),

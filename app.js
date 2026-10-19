@@ -511,7 +511,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.21";
+  const APP_VERSION = "1.22";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -736,18 +736,28 @@
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   async function playNow(id) {
     if (!np || !np.playing) { await Spotify.play(id); return; }
-    const wasHanded = handed;
+    // Spotify adds our track to the END of its queue, so step past anything queued ahead of it,
+    // then hand those tracks back to the front of the app queue, in the same order.
+    const skipped = []; let last = np.id;
     await Spotify.queue(id);
-    await sleep(300);
+    await sleep(250);
     await Spotify.next();
-    for (let i = 0; i < 4; i++) {
-      await sleep(700);
+    for (let i = 0; i < 30; i++) {
+      await sleep(350);
       const st = await Spotify.playerState().catch(() => null);
-      if (st && st.id === id) break;
-      if (st && wasHanded && st.id === wasHanded) await Spotify.next();   // our queued track was sitting behind it
+      if (!st || st.id === last) continue;          // hasn't moved on yet
+      if (st.id === id) break;                       // arrived
+      skipped.push(st.id); last = st.id;
+      qMeta.set(st.id, { title: st.title, artist: st.artist });
+      if (skipped.length > 12) break;
+      await Spotify.next();
     }
-    // A track the app had already handed to Spotify got skipped on the way: put it back at the front.
-    if (wasHanded) { handed = null; appQ = appQ.filter(x => x !== wasHanded); appQ.unshift(wasHanded); saveQ(); }
+    if (skipped.length) {
+      if (handed && skipped.includes(handed)) handed = null;
+      appQ = skipped.concat(appQ.filter(x => !skipped.includes(x)));
+      saveQ(); paintQueue();
+      toast(`Playing now — ${skipped.length} queued ${skipped.length === 1 ? "track" : "tracks"} kept, up next`);
+    }
   }
   async function playTrack(t) {
     if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return; }

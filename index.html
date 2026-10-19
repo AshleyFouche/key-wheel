@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Key Wheel</title>
+<meta name="description" content="ASH//F key wheel: browse the crates by Camelot key, build sets and save crates to Spotify.">
+<meta name="theme-color" content="#121014">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Key Wheel">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">Key Wheel <span>ASH//F</span></div>
+  <button class="pill" id="spotifyBtn" type="button">Connect Spotify</button>
+</header>
+
+<main>
+  <!-- WHEEL -->
+  <section class="view" id="view-wheel">
+    <div class="anchor" id="anchor"></div>
+    <svg class="wheel" id="wheel" viewBox="0 0 520 520" role="group" aria-label="Camelot key wheel"></svg>
+    <div class="moves" id="moves"></div>
+    <div class="filters">
+      <input id="q" type="search" placeholder="Search any track or artist" aria-label="Search any track or artist" autocomplete="off">
+      <div class="frow">
+        <label>Tempo <input id="tmin" type="number" inputmode="numeric" aria-label="Lowest tempo"> to <input id="tmax" type="number" inputmode="numeric" aria-label="Highest tempo"></label>
+        <select id="crate" aria-label="Crate"><option value="">All crates</option></select>
+      </div>
+    </div>
+    <div class="count" id="count"></div>
+    <div class="list" id="list"></div>
+    <button class="btn ghost more" id="more" type="button" hidden>Show more</button>
+  </section>
+
+  <!-- CRATE -->
+  <section class="view" id="view-crate" hidden>
+    <h2>Crate in progress</h2>
+    <p class="note">Tap <b>+</b> on any track to add it here. Then name the crate and save it to Spotify as a new playlist.</p>
+    <div class="crate-actions">
+      <button class="btn ghost" id="fromPath" type="button">Add my set path</button>
+      <button class="btn ghost" id="fromList" type="button">Add current list (up to 100)</button>
+      <button class="btn ghost danger" id="clearCrate" type="button">Clear</button>
+    </div>
+    <div class="count" id="crateCount"></div>
+    <div class="list" id="crateList"></div>
+    <div class="save">
+      <label for="crateName">Playlist name</label>
+      <input id="crateName" type="text" placeholder="ASH//F 6 Main Peak · Techno · 128–132">
+      <label class="check"><input id="crateOrder" type="checkbox"> Sort by tempo before saving</label>
+      <button class="btn" id="saveCrate" type="button">Save to Spotify</button>
+      <p class="status" id="saveStatus" role="status"></p>
+    </div>
+  </section>
+
+  <!-- PLAYLISTS -->
+  <section class="view" id="view-playlists" hidden>
+    <h2>Your Spotify playlists</h2>
+    <div id="plWrap"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view" id="view-more" hidden>
+    <h2>Library</h2>
+    <p class="note" id="libInfo"></p>
+    <div class="crate-actions">
+      <button class="btn ghost" id="backup" type="button">Back up my data</button>
+      <label class="btn ghost filebtn">Restore backup<input id="restore" type="file" accept="application/json,.json" hidden></label>
+    </div>
+    <h2>Add tracks</h2>
+    <p class="note">Paste the track list Claude gives you after reading your screen recording. One track per line: <code>spotify track id, key, tempo, title, artist</code>.</p>
+    <textarea id="paste" rows="6" placeholder="4anrLII28VHziHH8KuM9YF, 7A, 160, Spiritual Aura, DJ Rap"></textarea>
+    <button class="btn" id="addPaste" type="button">Add to library</button>
+    <p class="status" id="pasteStatus" role="status"></p>
+    <h2>Spotify</h2>
+    <p class="note" id="spInfo"></p>
+    <button class="btn ghost" id="logout" type="button">Disconnect Spotify</button>
+    <h2>About the keys</h2>
+    <p class="note">Keys and tempos come from Spotify's Mix view. A is minor, B is major. Same key, one step, mood switch (same number, other letter), energy boost (+2) and diagonal moves all mix cleanly. The rules narrow the field; your ears decide the blend.</p>
+  </section>
+</main>
+
+<nav class="tabs" aria-label="Sections">
+  <button data-view="wheel" class="on" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>Wheel</button>
+  <button data-view="crate" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="16" height="13" rx="2"/><path d="M8 7V4h8v3"/></svg>Crate <span class="badge" id="crateBadge" hidden></span></button>
+  <button data-view="playlists" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h12M4 11h12M4 16h7"/><circle cx="18" cy="17" r="2.5"/><path d="M20.5 17V7"/></svg>Playlists</button>
+  <button data-view="more" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>More</button>
+</nav>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="config.js"></script>
+<script src="spotify.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

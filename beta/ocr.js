@@ -163,6 +163,7 @@
     const out = [];
     L.forEach((l, i) => {
       const m = l.text.match(/(\d{2,3})\s*b\S{0,2}m\b/i); if (!m) return;
+      if (l.cy < H * 0.105 || l.cy > H * 0.81) return;     // half-hidden under the top buttons or the player bar
       const bpm = parseInt(m[1], 10);
       const nums = l.w.filter(w => /^\d{2,3}$/.test(w.text)), cut = nums.length ? nums[nums.length - 1].x : W * 0.75;
       const title = l.w.filter(w => w.x < cut - 5).map(w => w.text).join(" ").trim();
@@ -187,42 +188,74 @@
     });
   }
 
-  // ---- videos: grab a frame whenever the list has scrolled to new tracks and come to rest ----
-  function signature(c) {
-    const s = mkCanvas(24, 48), g = s.getContext("2d");
-    g.drawImage(c, c.width * 0.165, c.height * 0.12, c.width * 0.6, c.height * 0.7, 0, 0, 24, 48);
-    const d = g.getImageData(0, 0, 24, 48).data, out = new Float32Array(24 * 48);
-    for (let i = 0; i < out.length; i++) out[i] = d[i * 4] * 0.299 + d[i * 4 + 1] * 0.587 + d[i * 4 + 2] * 0.114;
+  // ---- videos ----
+  // Screen recordings are sharp even mid-scroll, so there's no need to wait for pauses. Instead, track how far
+  // the list has scrolled and read a frame each time about half a screen of new tracks has come into view.
+  const PROF_H = 350;
+  function profile(c) {
+    const s = mkCanvas(16, PROF_H), g = s.getContext("2d");
+    g.drawImage(c, c.width * 0.165, c.height * 0.12, c.width * 0.6, c.height * 0.7, 0, 0, 16, PROF_H);
+    const d = g.getImageData(0, 0, 16, PROF_H).data, out = new Float32Array(PROF_H);
+    for (let r = 0; r < PROF_H; r++) { let t = 0; for (let x = 0; x < 16; x++) { const i = (r * 16 + x) * 4; t += d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114; } out[r] = t / 16; }
     return out;
   }
-  const diff = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]); return s / a.length; };
+  function scrollBetween(a, b, maxs) {          // rows the list moved between two frames (best-aligned shift)
+    let best = 1e9, bs = 0;
+    for (let s = -maxs; s <= maxs; s++) {
+      const lo = Math.max(0, s), hi = Math.min(PROF_H, PROF_H + s); if (hi - lo < 100) continue;
+      let e = 0; for (let i = lo; i < hi; i++) e += Math.abs(a[i] - b[i - s]);
+      e /= hi - lo; if (e < best) { best = e; bs = s; }
+    }
+    return Math.abs(bs);
+  }
   async function videoFrames(file, onFrame, onProgress) {
     const url = URL.createObjectURL(file), v = document.createElement("video");
     v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = url;
     await new Promise((res, rej) => { v.onloadeddata = res; v.onerror = () => rej(new Error("Couldn't open that video on this device")); });
-    const dur = v.duration, step = 0.4, W = v.videoWidth, H = v.videoHeight;
+    const dur = v.duration, step = 0.1, W = v.videoWidth, H = v.videoHeight;
     const c = mkCanvas(W, H), g = c.getContext("2d");
-    let prev = null, lastUsed = null, n = 0;
+    let prev = null, moved = 0, n = 0, last = -1;
+    const take = async () => { const copy = mkCanvas(W, H); copy.getContext("2d").drawImage(c, 0, 0); await onFrame(copy); n++; moved = 0; };
     for (let t = 0.05; t < dur; t += step) {
-      await new Promise(res => { v.onseeked = res; v.currentTime = Math.min(t, dur - 0.01); });
+      await new Promise(res => { v.onseeked = res; v.currentTime = Math.min(t, dur - 0.02); });
       g.drawImage(v, 0, 0, W, H);
-      const sig = signature(c);
-      const still = prev && diff(sig, prev) < 2.5;                 // not mid-scroll
-      const isNew = !lastUsed || diff(sig, lastUsed) > 6;          // shows different tracks from the last frame we read
-      if (still && isNew) { const copy = mkCanvas(W, H); copy.getContext("2d").drawImage(c, 0, 0); await onFrame(copy); lastUsed = sig; n++; }
-      prev = sig;
+      const p = profile(c);
+      if (prev) moved += scrollBetween(prev, p, 140);
+      if (!prev || moved >= PROF_H * 0.38) { await take(); last = t; }
+      prev = p;
       onProgress && onProgress(t / dur);
     }
+    if (moved > PROF_H * 0.1) await take();       // whatever scrolled in at the very end
     URL.revokeObjectURL(url);
     return n;
   }
 
+  // The same track read from two frames can differ by a letter ("Mondmelodie" / "Mondmeliodie"):
+  // same key + same BPM + nearly the same title counts as one track.
+  const norm = s => (s || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  function similar(a, b) {
+    if (a === b) return 1; if (!a || !b) return 0;
+    const m = a.length, n = b.length, row = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) {
+      let prev = row[0]; row[0] = i;
+      for (let j = 1; j <= n; j++) { const tmp = row[j]; row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = tmp; }
+    }
+    return 1 - row[n] / Math.max(m, n);
+  }
+
   // Public: read a set of files (screenshots and/or recordings) and return unique tracks in order.
   async function readFiles(files, onStatus) {
-    const seen = new Set(), tracks = [];
+    const tracks = [];
     const add = list => list.forEach(t => {
-      const k = (t.title + "|" + t.artist).toLowerCase().replace(/[^\p{L}\p{N}|]+/gu, "");
-      if (!seen.has(k)) { seen.add(k); tracks.push(t); }
+      const tn = norm(t.title);
+      const same = tracks.find(x => x.bpm === t.bpm && similar(norm(x.title), tn) >= 0.8 &&
+        (x.key === t.key || !x.artist || !t.artist || similar(norm(x.artist), norm(t.artist)) >= 0.8));
+      if (same) {
+        if (!same.artist && t.artist) same.artist = t.artist; if (!same.len && t.len) same.len = t.len;
+        if (same.key !== t.key && t.key.length > same.key.length && t.key.endsWith(same.key)) same.key = t.key;   // "2A" vs "12A": the 1 got dropped
+        return;
+      }
+      tracks.push(t);
     });
     onStatus("Loading the text reader (first time takes a few seconds)…");
     await worker();
@@ -230,9 +263,9 @@
     for (const f of files) {
       i++;
       if (/^video\//.test(f.type) || /\.(mov|mp4|m4v|webm)$/i.test(f.name)) {
-        let frames = 0;
-        await videoFrames(f, async c => { frames++; onStatus(`Recording ${i} of ${files.length}: reading screen ${frames}… (${tracks.length} tracks so far)`); add(await readImage(c)); },
-          p => onStatus(`Recording ${i} of ${files.length}: ${Math.round(p * 100)}% · ${tracks.length} tracks so far`));
+        let frames = 0, pct = 0;
+        await videoFrames(f, async c => { frames++; onStatus(`Recording ${i} of ${files.length}: ${pct}% · reading screen ${frames} · ${tracks.length} tracks so far`); add(await readImage(c)); },
+          p => { pct = Math.round(p * 100); onStatus(`Recording ${i} of ${files.length}: ${pct}% · ${tracks.length} tracks so far`); });
       } else {
         onStatus(`Reading screenshot ${i} of ${files.length}… (${tracks.length} tracks so far)`);
         add(await readImage(await loadImage(f)));

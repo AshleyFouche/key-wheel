@@ -294,6 +294,7 @@
     </div>
     <h2>Add tracks</h2>
     <p class="note">Best route: open the playlist in the <b>Playlists</b> tab and use <b>Add keys</b> there. Use this box for tracks that aren't in one of your playlists; ASH//FLOW searches Spotify to find them. One track per line: <code>key | BPM | title | artist | length</code>.</p>
+    <div class="crate-actions"><label class="btn ghost" for="moreShots">From screenshots or recording</label><input id="moreShots" type="file" accept="image/*,video/*" multiple hidden></div>
     <textarea id="paste" rows="6" placeholder="7B | 130 | Positive | Jamback | 2:49"></textarea>
     <button class="btn" id="addPaste" type="button">Find tracks</button>
     <p class="status" id="pasteStatus" role="status"></p>
@@ -345,6 +346,7 @@
 <script src="icons.js"></script>
 <script src="config.js"></script>
 <script src="spotify.js"></script>
+<script src="ocr.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

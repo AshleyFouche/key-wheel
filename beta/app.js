@@ -462,10 +462,11 @@
       acts.innerHTML = '<button class="btn" type="button" id="plKeys">Add keys</button><button class="btn ghost" type="button" id="plAll">Add tracks with keys to crate</button><button class="btn ghost" type="button" id="plReorder">Reorder</button>';
       w.appendChild(acts);
       const pb = document.createElement("div"); pb.className = "pastebox"; pb.hidden = true;
-      pb.innerHTML = '<p class="note">Paste the lines Claude gave you for this playlist. They\'re matched to the exact tracks in it; anything not found here is searched on Spotify.</p><textarea id="plPaste" rows="6" placeholder="7B | 130 | Positive | Jamback | 2:49"></textarea><button class="btn" type="button" id="plMatch">Match</button>';
+      pb.innerHTML = '<p class="note">Pick screenshots or a screen recording of this playlist in Spotify\'s <b>Mix</b> view, or paste lines from Claude. They\'re matched to the exact tracks in it.</p><div class="crate-actions"><label class="btn" for="plShots">From screenshots or recording</label><input id="plShots" type="file" accept="image/*,video/*" multiple hidden></div><p class="note" id="plOcr" role="status"></p><textarea id="plPaste" rows="6" placeholder="7B | 130 | Positive | Jamback | 2:49"></textarea><button class="btn" type="button" id="plMatch">Match</button>';
       w.appendChild(pb);
       $("plKeys").onclick = () => { pb.hidden = !pb.hidden; if (!pb.hidden) $("plPaste").focus(); };
       $("plMatch").onclick = () => startMatch($("plPaste").value, tracks, "playlists");
+      $("plShots").onchange = e => readShots(e.target, $("plPaste"), $("plOcr"));
       $("plAll").onclick = () => { recs.filter(r => r.key).forEach(r => { if (!crate.includes(r.id)) crate.push(r.id); }); saveCrate(); toast("Added to crate"); };
       const list = document.createElement("div"); list.className = "list";
       // order[i] = original index of the track now at position i, kept in step with Spotify.
@@ -511,7 +512,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.0";
+  const APP_VERSION = "2.1";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -726,6 +727,19 @@
     if (matchReturn === "playlists" && lastPlaylist) { go("playlists", true); openPlaylist(lastPlaylist); }
   };
   $("addPaste").onclick = () => startMatch($("paste").value, null, "more");
+  // Screenshots / screen recordings of Spotify's Mix view → lines in the box, ready to Match.
+  async function readShots(input, box, status) {
+    const files = [...input.files]; input.value = "";
+    if (!files.length) return;
+    try {
+      const tracks = await FlowOCR.readFiles(files, msg => { status.textContent = msg; });
+      if (!tracks.length) { status.textContent = "Couldn't find any tracks. Make sure the screenshots are of Spotify's Mix view, uncropped."; return; }
+      const lines = FlowOCR.toLines(tracks);
+      box.value = (box.value.trim() ? box.value.trim() + "\n" : "") + lines;
+      status.textContent = `Read ${tracks.length} tracks. Check the lines below, then tap ${box.id === "paste" ? "Find tracks" : "Match"}.`;
+    } catch (e) { status.textContent = "Couldn't read those: " + e.message; }
+  }
+  $("moreShots").onchange = e => readShots(e.target, $("paste"), $("pasteStatus"));
 
   // ---------- playback + now playing ----------
   let np = null, follow = ls.get("kwb.follow", false), npTimer = null, lastNpId = null;

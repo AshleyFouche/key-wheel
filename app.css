@@ -98,7 +98,7 @@ textarea{width:100%;font-family:var(--mono);font-size:13px}
 .pl .c{color:var(--muted);font-size:12px}
 .back{justify-self:start}
 
-.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(5,1fr);
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(6,1fr);
   padding:6px max(8px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px));
   background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line)}
 .tabs button{background:none;border:0;display:grid;justify-items:center;gap:3px;font-size:11px;font-weight:600;color:var(--muted);padding:6px 0;cursor:pointer;position:relative}
@@ -177,3 +177,14 @@ body.has-np .toast{bottom:calc(var(--tabs-h) + env(safe-area-inset-bottom,0px) +
 #pvMix{justify-self:center}
 body.on-playing .np{display:none}
 body.on-playing.has-np{padding-bottom:calc(var(--tabs-h) + env(safe-area-inset-bottom,0px) + 16px)}
+
+/* History */
+.tabs button{font-size:10px}
+.sess{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:12px 14px;display:grid;gap:8px}
+.sess-h{display:grid;gap:2px;cursor:pointer}
+.sess-h b{font-family:var(--display);font-size:17px}
+.sess-h span{font-size:12px;color:var(--muted);white-space:nowrap}
+.sess-keys{display:flex;gap:3px;flex-wrap:wrap}
+.sess-keys .k{font-size:10px;padding:1px 5px}
+#histWrap{display:grid;gap:12px}
+.row .when{font-size:10px;color:var(--muted);font-family:var(--mono)}

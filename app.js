@@ -410,7 +410,7 @@
   }
   $("logout").onclick = () => { Spotify.logout(); plCache = null; clearInterval(npTimer); np = null; paintNp(); paintSpotifyBtn(); paintMore(); toast("Disconnected from Spotify"); };
   $("backup").onclick = () => {
-    const data = { app: "key-wheel", saved: new Date().toISOString(), extra: ls.get("kw.extra", []), crate, state: { key: state.key, on: state.on } };
+    const data = { app: "key-wheel", saved: new Date().toISOString(), extra: ls.get("kw.extra", []), history: ls.get("kw.history", []), crate, state: { key: state.key, on: state.on } };
     const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "key-wheel-backup.json"; document.body.appendChild(a); a.click(); a.remove();
   };
@@ -419,7 +419,7 @@
     try {
       const d = JSON.parse(await f.text());
       if (d.app !== "key-wheel") throw new Error("not a Key Wheel backup");
-      ls.set("kw.extra", d.extra || []); crate = d.crate || []; saveCrate();
+      ls.set("kw.extra", d.extra || []); if (d.history) ls.set("kw.history", d.history); crate = d.crate || []; saveCrate();
       await loadLibrary(); crateOptions(); render(); paintMore(); toast("Backup restored");
     } catch (err) { toast("Couldn't restore: " + err.message); }
     e.target.value = "";
@@ -501,6 +501,8 @@
     if (!Spotify.connected() || !Spotify.canPlay() || document.visibilityState !== "visible") return;
     try {
       np = await Spotify.playerState();
+      if (np && np.progress >= 30000 && loggedFor !== np.id) { loggedFor = np.id; addHistory([{ id: np.id, title: np.title, artist: np.artist, at: np.at - np.progress, src: "app" }]); }
+      if (Date.now() - lastRecentSync > 120000) syncRecent();
       if (np && np.id !== lastNpId) {
         lastNpId = np.id;
         if (!$("view-playing").hidden) loadUpNext();
@@ -578,6 +580,79 @@
   }
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pollNow(); });
 
+  // ---------- history ----------
+  let loggedFor = null, lastRecentSync = 0;
+  const GAP = 60 * 60 * 1000;
+  function addHistory(entries) {
+    const h = ls.get("kw.history", []);
+    let changed = false;
+    for (const e of entries) {
+      if (!e.id || !e.at) continue;
+      if (h.some(x => x.id === e.id && Math.abs(x.at - e.at) < 10 * 60 * 1000)) continue;
+      h.push({ id: e.id, title: e.title, artist: e.artist, at: e.at }); changed = true;
+    }
+    if (!changed) return;
+    h.sort((a, b) => a.at - b.at);
+    ls.set("kw.history", h.slice(-3000));
+    if (!$("view-history").hidden) paintHistory();
+  }
+  async function syncRecent() {
+    lastRecentSync = Date.now();
+    if (!Spotify.connected() || !Spotify.canPlay()) return;
+    try { addHistory(await Spotify.recentlyPlayed()); } catch (e) {}
+  }
+  function sessions() {
+    const h = ls.get("kw.history", []), out = [];
+    let cur = null;
+    h.forEach(e => {
+      if (!cur || e.at - cur.last > GAP) { cur = { start: e.at, last: e.at, plays: [] }; out.push(cur); }
+      cur.plays.push(e); cur.last = e.at;
+    });
+    return out.reverse();
+  }
+  const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" });
+  const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+  const openSess = new Set();
+  function paintHistory() {
+    const w = $("histWrap"), ss = sessions();
+    w.innerHTML = "";
+    if (!ss.length) { w.innerHTML = '<p class="note">Nothing yet. Play some tracks through Spotify (from Key Wheel or Spotify itself) and they\'ll appear here once each has played for 30 seconds.</p>'; return; }
+    ss.forEach((ses, i) => {
+      const key = String(ses.start);
+      if (i === 0 && !openSess.size) openSess.add(key);
+      const recs = ses.plays.map(e => byId.get(e.id) || { id: e.id, title: e.title, artist: e.artist, tempo: 0, key: null });
+      const box = document.createElement("div"); box.className = "sess";
+      const keys = recs.filter(r => r.key).map(r => `<span class="k" style="background:${col(parseInt(r.key))}">${r.key}</span>`).join("");
+      box.innerHTML = `<div class="sess-h"><b>${i === 0 && Date.now() - ses.last < GAP ? "Tonight · " : ""}${dayFmt.format(ses.start)}</b><span>${timeFmt.format(ses.start)} – ${timeFmt.format(ses.last)} · ${recs.length} tracks</span></div>
+        <div class="sess-keys">${keys}</div>
+        <div class="acts"><button class="btn" type="button" data-a="crate">Use as crate</button><button class="btn ghost" type="button" data-a="toggle">${openSess.has(key) ? "Hide tracks" : "Show tracks"}</button><button class="btn ghost danger" type="button" data-a="del">Delete</button></div>`;
+      if (openSess.has(key)) {
+        const list = document.createElement("div"); list.className = "list";
+        recs.forEach((r, j) => {
+          const row = rowEl(r, null, setAnchor);
+          const when = document.createElement("div"); when.className = "when"; when.textContent = timeFmt.format(ses.plays[j].at);
+          row.querySelector(".tt").prepend(when);
+          list.appendChild(row);
+        });
+        box.appendChild(list);
+      }
+      box.querySelector(".sess-h").onclick = box.querySelector('[data-a="toggle"]').onclick = () => { openSess.has(key) ? openSess.delete(key) : openSess.add(key); paintHistory(); };
+      box.querySelector('[data-a="crate"]').onclick = () => {
+        crate = [...new Set(ses.plays.map(e => e.id))]; saveCrate();
+        $("crateName").value = "ASH//F Session · " + dayFmt.format(ses.start) + " " + new Date(ses.start).getFullYear();
+        go("crate"); window.scrollTo(0, 0); toast(`Crate set to this session (${crate.length} tracks)`);
+      };
+      const del = box.querySelector('[data-a="del"]');
+      del.onclick = () => {
+        if (!del.dataset.confirm) { del.dataset.confirm = "1"; del.textContent = "Tap again to delete"; setTimeout(() => { delete del.dataset.confirm; del.textContent = "Delete"; }, 3000); return; }
+        const set = new Set(ses.plays);
+        ls.set("kw.history", ls.get("kw.history", []).filter(e => !ses.plays.some(p => p.id === e.id && p.at === e.at)));
+        paintHistory(); toast("Session deleted");
+      };
+      w.appendChild(box);
+    });
+  }
+
   // ---------- tabs + spotify button ----------
   function go(v) {
     document.querySelectorAll(".view").forEach(s => s.hidden = s.id !== "view-" + v);
@@ -586,6 +661,7 @@
     if (v === "playing") { paintPlaying(); loadUpNext(); if (Spotify.connected() && Spotify.canPlay()) startPolling(); }
     else if (typeof npTimer !== "undefined" && npTimer && Spotify.canPlay()) startPolling();
     if (v === "crate") paintCrate();
+    if (v === "history") { paintHistory(); syncRecent(); }
     if (v === "playlists") paintPlaylists();
     if (v === "more") paintMore();
     try { sessionStorage.setItem("kw.view", v); } catch (e) {}
@@ -611,7 +687,7 @@
     let v = "wheel"; try { v = sessionStorage.getItem("kw.view") || "wheel"; } catch (e) {}
     go(v);
     paintModes();
-    if (Spotify.connected()) { if (Spotify.canPlay()) startPolling(); else showReconnect(); }
+    if (Spotify.connected()) { if (Spotify.canPlay()) { startPolling(); syncRecent(); } else showReconnect(); }
     if (res && res.ok) { toast("Connected to Spotify"); if (!Spotify.canPlay()) go("playlists"); }
     else if (res && res.error) toast("Spotify sign-in didn't finish: " + res.error, 5000);
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});

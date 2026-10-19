@@ -3,8 +3,8 @@
   const AUTH = "https://accounts.spotify.com/authorize";
   const TOKEN = "https://accounts.spotify.com/api/token";
   const API = "https://api.spotify.com/v1";
-  const SCOPES = "playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public user-read-playback-state user-modify-playback-state user-read-currently-playing";
-  const PLAYER_SCOPES = ["user-read-playback-state", "user-modify-playback-state", "user-read-currently-playing"];
+  const SCOPES = "playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-recently-played";
+  const PLAYER_SCOPES = ["user-read-playback-state", "user-modify-playback-state", "user-read-currently-playing", "user-read-recently-played"];
   const KEY = "kw.spotify";
 
   const store = {
@@ -197,8 +197,16 @@
   const next = () => api("/me/player/next", { method: "POST" });
   const previous = () => api("/me/player/previous", { method: "POST" });
 
+  async function recentlyPlayed() {
+    const j = await api("/me/player/recently-played?limit=50");
+    return (j.items || []).map(it => {
+      const t = it.track; if (!t || !t.id) return null;
+      return { id: t.id, title: t.name, artist: (t.artists || []).map(a => a.name).join(", "), at: Date.parse(it.played_at) - (t.duration_ms || 0), src: "spotify" };
+    }).filter(Boolean);
+  }
+
   window.Spotify = {
-    playerState, upNext, seek, next, previous,
+    recentlyPlayed, playerState, upNext, seek, next, previous,
     canPlay, play, queue, pause, resume, nowPlaying, devices,
     login, handleRedirect, connected: () => !!store.get(), logout: () => store.clear(),
     me, myPlaylists, playlistTracks, createPlaylist, addTracks, configured: () => !!window.CONFIG.spotifyClientId

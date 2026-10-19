@@ -591,7 +591,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.9";
+  const APP_VERSION = "2.10";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -685,6 +685,69 @@
     const text = lines.join("\n");
     out.innerHTML = `<pre class="conn">${esc(text)}</pre><button class="btn ghost" type="button" id="connCopy">Copy report</button>`;
     $("connCopy").onclick = () => { navigator.clipboard.writeText(text).then(() => toast("Copied — paste it to Claude"), () => toast("Couldn't copy — take a screenshot instead")); };
+  };
+
+  // ---------- genre test (Discogs) ----------
+  // Looks up a sample of tracks on Discogs (styles are per release, and very fine-grained for electronic music).
+  // A test only: shows what was found, saves nothing.
+  try { $("dgToken").value = localStorage.getItem("kwb.discogsToken") || ""; } catch (e) {}
+  $("dgToken").onchange = () => { try { localStorage.setItem("kwb.discogsToken", $("dgToken").value.trim()); } catch (e) {} };
+  async function fillDgPlaylists() {
+    if (!Spotify.connected() || $("dgPl").options.length > 1) return;
+    try {
+      const me = await Spotify.me(); plCache = plCache || await Spotify.myPlaylists();
+      plCache.filter(p => p && p.owner && p.owner.id === me.id).forEach(p => { const o = document.createElement("option"); o.value = p.id; o.textContent = p.name; $("dgPl").appendChild(o); });
+    } catch (e) {}
+  }
+  $("dgPl").onfocus = fillDgPlaylists;
+  const dgWait = ms => new Promise(r => setTimeout(r, ms));
+  async function dgSearch(token, params) {
+    const u = "https://api.discogs.com/database/search?" + new URLSearchParams(Object.assign({ type: "release", per_page: "5" }, params));
+    let r;
+    try { r = await fetch(u, { headers: { Authorization: "Discogs token=" + token } }); }
+    catch (e) { const x = new Error("Discogs couldn't be reached from this phone (the request was blocked)."); x.code = "blocked"; throw x; }
+    if (r.status === 401) { const x = new Error("Discogs didn't accept that token. Check it and try again."); x.code = "token"; throw x; }
+    if (r.status === 429) { await dgWait(5000); return dgSearch(token, params); }
+    if (!r.ok) throw new Error("Discogs error " + r.status);
+    return (await r.json()).results || [];
+  }
+  const dgBase = t => t.replace(/\s*[-–]\s*(?:.*\b(?:remix|mix|edit|version|dub|rework|original)\b.*)$/i, "").replace(/\s*[\(\[].*?[\)\]]\s*/g, " ").trim();
+  async function dgLookup(token, t) {
+    const artist = (t.artist || "").split(",")[0].trim(), title = dgBase(t.title || "");
+    let res = await dgSearch(token, { artist, track: title });
+    await dgWait(1100);
+    if (!res.length) { res = await dgSearch(token, { q: artist + " " + title }); await dgWait(1100); }
+    if (!res.length) return null;
+    // Styles from the best few releases, most common first.
+    const count = {};
+    res.slice(0, 3).forEach((r, i) => (r.style || []).forEach(s => count[s] = (count[s] || 0) + (3 - i)));
+    const styles = Object.keys(count).sort((a, b) => count[b] - count[a]).slice(0, 4);
+    const top = res[0];
+    return { styles, genres: top.genre || [], release: top.title || "", year: top.year || "" };
+  }
+  $("dgRun").onclick = async () => {
+    const token = $("dgToken").value.trim(), pl = $("dgPl").value, st = $("dgStatus"), out = $("dgOut");
+    if (!token) { st.textContent = "Paste your Discogs token first."; return; }
+    try { localStorage.setItem("kwb.discogsToken", token); } catch (e) {}
+    if (!pl) { st.textContent = "Choose a playlist to test."; fillDgPlaylists(); return; }
+    $("dgRun").disabled = true; out.innerHTML = ""; const t0 = Date.now();
+    try {
+      const tracks = (await Spotify.playlistTracks(pl)).slice(0, 25);
+      let found = 0, i = 0;
+      const list = document.createElement("div"); list.className = "dglist"; out.appendChild(list);
+      for (const t of tracks) {
+        i++; st.textContent = `Looking up ${i} of ${tracks.length}… (${found} found so far)`;
+        const r = await dgLookup(token, t);
+        if (r && r.styles.length) found++;
+        const d = document.createElement("div"); d.className = "dgrow" + (r && r.styles.length ? "" : " miss");
+        d.innerHTML = `<b>${esc(t.title)}</b> · ${esc(t.artist)}<br>` + (r && r.styles.length
+          ? `<span class="dgs">${r.styles.map(esc).join(" · ")}</span> <small>${esc(r.genres.join(", "))} — from “${esc(r.release)}”${r.year ? " (" + esc(String(r.year)) + ")" : ""}</small>`
+          : `<small>${r ? "Found on Discogs but no styles listed" : "Not found on Discogs"}</small>`);
+        list.appendChild(d);
+      }
+      st.textContent = `Done: styles found for ${found} of ${tracks.length} tracks in ${Math.round((Date.now() - t0) / 1000)} seconds. Check whether they look right.`;
+    } catch (e) { st.textContent = e.message; }
+    $("dgRun").disabled = false;
   };
 
   function paintMore() {

@@ -502,3 +502,9 @@ pre.conn{white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--mono);fon
 .albumlike.on .ico{stroke:none}
 #sheet .item span .ico{fill:none;stroke:currentColor}
 .hsug .hart{width:32px;height:32px;border-radius:5px;background:var(--raise) center/cover no-repeat}
+.dglist{display:grid;gap:8px;margin-top:8px}
+.dgrow{font-size:13px;line-height:1.4;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.dgrow .dgs{color:var(--good);font-weight:600}
+.dgrow small{color:var(--muted)}
+.dgrow.miss{opacity:.7}
+#dgToken{width:100%;margin:6px 0}

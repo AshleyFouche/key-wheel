@@ -135,17 +135,16 @@
     const a = $("anchor");
     if (state.anchor) {
       const t = state.anchor;
-      a.innerHTML = `<span class="eyebrow">Mixing out of</span><span class="t">${esc(t.title)}</span>
+      a.innerHTML = `<div class="ahead"><span class="eyebrow">Mixing out of</span><button class="link" type="button" id="all">All tracks</button></div><span class="t">${esc(t.title)}</span>
         <span class="m">${esc(t.artist)} · ${t.key} ${NAMES[t.key]} · ${t.tempo || "–"} tempo</span>
-        <span class="acts"><button class="btn ghost" type="button" id="aAdd">${crate.includes(t.id) ? "In crate ✓" : "+ Crate"}</button>${state.trail.length > 1 ? '<button class="btn ghost" type="button" id="back1">‹ Back one</button>' : ""}<button class="btn ghost" type="button" id="clr">${state.trail.length > 1 ? "Clear thread" : "Clear track"}</button><button class="btn" type="button" id="all">All tracks</button></span>`;
+        <span class="acts"><button class="btn ghost" type="button" id="aAdd">${crate.includes(t.id) ? "In crate ✓" : "+ Crate"}</button>${state.trail.length > 1 ? '<button class="btn ghost" type="button" id="back1">‹ Back one</button>' : ""}<button class="btn ghost" type="button" id="clr">${state.trail.length > 1 ? "Clear thread" : "Clear track"}</button></span>`;
       $("clr").onclick = () => { state.trail = []; state.anchor = null; $("tmin").value = ""; $("tmax").value = ""; saveState(); render(); };
       $("aAdd").onclick = () => { toggleCrate(t.id); render(); };
       const b1 = $("back1");
       if (b1) b1.onclick = () => { state.trail.pop(); setAnchor(state.trail[state.trail.length - 1], true); };
     } else if (state.key) {
-      a.innerHTML = `<span class="eyebrow">Selected key</span><span class="t">${state.key} · ${NAMES[state.key]}</span>
-        <span class="m">Tap a track to mix out of it. Searching always looks across every track.</span>
-        <span class="acts"><button class="btn" type="button" id="all">All tracks</button></span>`;
+      a.innerHTML = `<div class="ahead"><span class="eyebrow">Selected key</span><button class="link" type="button" id="all">All tracks</button></div><span class="t">${state.key} · ${NAMES[state.key]}</span>
+        <span class="m">Tap a track to mix out of it. Search looks across every track.</span>`;
     } else {
       a.innerHTML = `<span class="eyebrow">Library</span><span class="t">All ${T.length.toLocaleString()} tracks</span>
         <span class="m">Search for what's playing, then tap it to see what mixes out of it.</span>`;
@@ -153,7 +152,7 @@
     const all = $("all"); if (all) all.onclick = showAll;
     if (state.trail.length > 1) {
       const tr = document.createElement("div"); tr.className = "trail";
-      tr.innerHTML = '<span class="eyebrow">Your thread so far</span>';
+      tr.innerHTML = '<div class="ahead"><span class="eyebrow">Your thread so far</span><button class="link" type="button" id="pathCrate">Save as crate</button></div>';
       const ol = document.createElement("ol");
       state.trail.forEach((t, i) => {
         const li = document.createElement("li"), b = document.createElement("button");
@@ -162,10 +161,7 @@
         b.onclick = () => { state.trail = state.trail.slice(0, i + 1); setAnchor(t, true); };
         li.appendChild(b); ol.appendChild(li);
       });
-      tr.appendChild(ol);
-      const sp = document.createElement("div"); sp.className = "acts";
-      sp.innerHTML = '<button class="btn" type="button" id="pathCrate">Save thread as crate</button>';
-      tr.appendChild(sp); a.appendChild(tr);
+      tr.appendChild(ol); a.appendChild(tr);
       $("pathCrate").onclick = () => {
         crate = [...new Set(state.trail.map(t => t.id))]; saveCrate();
         const first = state.trail[0], last = state.trail[state.trail.length - 1];
@@ -997,7 +993,7 @@
       const keys = recs.filter(r => r.key).map(r => `<span class="k" style="background:${col(parseInt(r.key))}">${r.key}</span>`).join("");
       box.innerHTML = `<div class="sess-h"><b>${i === 0 && Date.now() - ses.last < GAP ? "Tonight\'s flow · " : ""}${dayFmt.format(ses.start)}</b><span>${timeFmt.format(ses.start)} – ${timeFmt.format(ses.last)} · ${recs.length} tracks</span></div>
         <div class="sess-keys">${keys}</div>
-        <div class="acts"><button class="btn" type="button" data-a="crate">Use as crate</button><button class="btn ghost" type="button" data-a="addcrate">Add to crate</button><button class="btn ghost" type="button" data-a="toggle">${openSess.has(key) ? "Hide tracks" : "Show tracks"}</button><button class="btn ghost danger" type="button" data-a="del">Delete</button></div>`;
+        <div class="acts"><button class="btn" type="button" data-a="crate">Use as crate</button><button class="btn ghost" type="button" data-a="addcrate">Add to crate</button><button class="btn ghost" type="button" data-a="toggle">${openSess.has(key) ? "Hide" : "Tracks"}</button><button class="btn ghost danger" type="button" data-a="del">Delete</button></div>`;
       if (openSess.has(key)) {
         const list = document.createElement("div"); list.className = "list";
         recs.forEach((r, j) => {

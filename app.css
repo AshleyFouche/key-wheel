@@ -320,3 +320,74 @@ body.has-np.np-vol-open{padding-bottom:calc(var(--tabs-h) + env(safe-area-inset-
 .sheet button.item span,.sheet a.item span{display:grid;place-items:center;color:var(--muted)}
 .sheet .item .ico{width:20px;height:20px}
 .sheet .item.dev.on span{color:var(--good)}
+
+/* ===== Style pass: lighter, more compact controls ===== */
+.btn{font-size:13px;padding:8px 13px;border-radius:999px;line-height:1.2;letter-spacing:.01em}
+.btn.ghost{border-color:var(--line);background:var(--surface)}
+.acts,.crate-actions{gap:6px}
+h2{font-size:18px}
+main{padding-top:12px}
+.view{gap:12px}
+.top{padding-top:calc(env(safe-area-inset-top,0px) + 8px);padding-bottom:8px}
+.brand{font-size:20px}
+.pill{font-size:12px;padding:5px 11px}
+
+/* Wheel tab: slimmer "mixing out of" card */
+.anchor{padding:12px 14px;gap:3px;border-radius:16px;background:linear-gradient(180deg,var(--surface),color-mix(in srgb,var(--surface) 70%,var(--bg)))}
+.anchor .t{font-size:17px;line-height:1.2}
+.anchor .m{font-size:12.5px}
+.anchor .acts{margin-top:6px}
+.anchor .acts .btn{padding:6px 11px;font-size:12px}
+.trail{margin-top:6px;padding-top:8px}
+.step{font-size:11.5px;padding:2px 9px 2px 2px}
+.step .k{font-size:10px}
+
+/* filters */
+#q{border-radius:999px;padding:9px 14px}
+.frow{gap:6px}
+.frow label{font-size:11px}
+input[type=number]{width:58px;border-radius:999px;padding:7px 10px;text-align:center}
+.frow select{border-radius:999px;padding:7px 12px;font-size:13px}
+.count{font-size:12px;letter-spacing:.02em}
+
+/* moves chips */
+.move{padding:5px 11px 5px 5px;font-size:12px}
+.move .k{font-size:10px}
+
+/* rows */
+.row{padding:7px 0}
+.row .key{font-size:11px;padding:3px 0;border-radius:6px}
+.row .bpm{font-size:12px;color:var(--muted)}
+.row .tt div{font-size:14.5px}
+.row .tt .a{font-size:12.5px}
+.add,.play{border-radius:10px}
+.add.in{background:color-mix(in srgb,var(--accent) 85%,#000)}
+
+/* crate */
+.save{padding:12px;border-radius:16px;gap:8px}
+.save .btn{justify-self:start}
+#saveCrate{padding:10px 18px;font-size:14px}
+.seg2 label{font-size:12px;padding:7px}
+#crateName{border-radius:12px}
+
+/* flows */
+.sess{padding:12px;border-radius:16px;gap:8px}
+.sess-h b{font-size:16px}
+.sess .acts .btn{padding:6px 11px;font-size:12px}
+
+/* playlists */
+.pl{padding:8px 0}
+.pl img,.pl .ph{width:44px;height:44px}
+
+/* playing tab */
+.pv-art{max-width:320px}
+.pv-t{font-size:21px}
+#pvMix{padding:9px 16px}
+.devbtn{padding:9px 12px;border-radius:14px}
+
+/* more */
+.infolink{padding:12px 14px}
+
+.ahead{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.link{background:none;border:0;padding:0;color:var(--accent);font-size:12.5px;font-weight:600;cursor:pointer}
+.add.in{background:color-mix(in srgb,var(--accent) 18%,var(--surface));border-color:color-mix(in srgb,var(--accent) 55%,var(--line));color:var(--accent)}

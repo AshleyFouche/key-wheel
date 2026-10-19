@@ -1,4 +1,4 @@
-// Ashflow: library, Camelot wheel, thread, crate builder, flows, Spotify playback and playlists.
+// ASH//FLOW: library, Camelot wheel, thread, crate builder, flows, Spotify playback and playlists.
 (function () {
   const $ = id => document.getElementById(id);
   const ls = {
@@ -169,7 +169,7 @@
       $("pathCrate").onclick = () => {
         crate = [...new Set(state.trail.map(t => t.id))]; saveCrate();
         const first = state.trail[0], last = state.trail[state.trail.length - 1];
-        $("crateName").value = `Ashflow · ${first.title} → ${last.title}`.slice(0, 100);
+        $("crateName").value = `ASH//FLOW · ${first.title} → ${last.title}`.slice(0, 100);
         go("crate"); window.scrollTo(0, 0); toast(`Crate set to your ${crate.length}-track thread`);
       };
     }
@@ -340,7 +340,7 @@
         st.innerHTML = `Added ${fresh.length} tracks to “${esc(name)}”${ids.length - fresh.length ? ` (${ids.length - fresh.length} ${ids.length - fresh.length === 1 ? "was" : "were"} already there)` : ""}. <a href="https://open.spotify.com/playlist/${esc(exId)}" target="_blank" rel="noopener">Open in Spotify</a>`;
       } else {
         const name = $("crateName").value.trim() || ("ASH//F crate · " + new Date().toLocaleDateString());
-        const pl = await Spotify.createPlaylist(name, "Built in Ashflow", ids);
+        const pl = await Spotify.createPlaylist(name, "Built in ASH//FLOW", ids);
         st.className = "status ok";
         st.innerHTML = `Saved “${esc(name)}” with ${ids.length} tracks. <a href="${esc(pl.external_urls?.spotify || "#")}" target="_blank" rel="noopener">Open in Spotify</a>`;
         plCache = null;
@@ -418,7 +418,7 @@
     const f = e.target.files[0]; if (!f) return;
     try {
       const d = JSON.parse(await f.text());
-      if (d.app !== "key-wheel") throw new Error("not an Ashflow backup");
+      if (d.app !== "key-wheel") throw new Error("not an ASH//FLOW backup");
       ls.set("kw.extra", d.extra || []); if (d.history) ls.set("kw.history", d.history); crate = d.crate || []; saveCrate();
       await loadLibrary(); crateOptions(); render(); paintMore(); toast("Backup restored");
     } catch (err) { toast("Couldn't restore: " + err.message); }
@@ -465,7 +465,7 @@
   function showReconnect() {
     npBar.hidden = false; document.body.classList.add("has-np");
     $("npArt").style.backgroundImage = "";
-    $("npTitle").textContent = "Reconnect Spotify to play from Ashflow";
+    $("npTitle").textContent = "Reconnect Spotify to play from ASH//FLOW";
     $("npSub").textContent = "One-time step to allow playback control.";
     $("npPP").textContent = "↻"; $("npPP").onclick = () => Spotify.login().catch(err => toast(err.message));
   }
@@ -616,7 +616,7 @@
   function paintHistory() {
     const w = $("histWrap"), ss = sessions();
     w.innerHTML = "";
-    if (!ss.length) { w.innerHTML = '<p class="note">Nothing yet. Play some tracks through Spotify (from Ashflow or Spotify itself) and they\'ll appear here once each has played for 30 seconds.</p>'; return; }
+    if (!ss.length) { w.innerHTML = '<p class="note">Nothing yet. Play some tracks through Spotify (from ASH//FLOW or Spotify itself) and they\'ll appear here once each has played for 30 seconds.</p>'; return; }
     ss.forEach((ses, i) => {
       const key = String(ses.start);
       if (i === 0 && !openSess.size) openSess.add(key);
@@ -639,7 +639,7 @@
       box.querySelector(".sess-h").onclick = box.querySelector('[data-a="toggle"]').onclick = () => { openSess.has(key) ? openSess.delete(key) : openSess.add(key); paintHistory(); };
       box.querySelector('[data-a="crate"]').onclick = () => {
         crate = [...new Set(ses.plays.map(e => e.id))]; saveCrate();
-        $("crateName").value = "Ashflow · " + dayFmt.format(ses.start) + " " + new Date(ses.start).getFullYear();
+        $("crateName").value = "ASH//FLOW · " + dayFmt.format(ses.start) + " " + new Date(ses.start).getFullYear();
         go("crate"); window.scrollTo(0, 0); toast(`Crate set to this flow (${crate.length} tracks)`);
       };
       box.querySelector('[data-a="addcrate"]').onclick = () => {

@@ -1,6 +1,6 @@
 {
-  "name": "Ashflow",
-  "short_name": "Ashflow",
+  "name": "ASH//FLOW",
+  "short_name": "ASH//FLOW",
   "description": "Browse your crates by key, follow the flow, and turn listening sessions into Spotify playlists.",
   "start_url": "./",
   "scope": "./",

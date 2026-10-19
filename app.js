@@ -510,7 +510,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.10";
+  const APP_VERSION = "1.11";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1299,7 +1299,11 @@
   const tempoDelta = (from, t) => { const d = from.tempo && t.tempo ? t.tempo - from.tempo : 0; return d ? (d > 0 ? "+" : "") + d + " tempo" : "same tempo"; };
 
   // ---------- heads-up before the track ends ----------
-  const headsDismissed = new Set();
+  const headsDismissed = new Set(), autoDone = new Set();
+  // Auto-pick: if nothing is queued, the top suggestion is queued this long before the end,
+  // so Spotify has it in time (and before any crossfade starts).
+  const AUTO_MS = 8000;
+  let autoPick = ls.get("kw.autopick", true);
   function headsState() {
     if (!np || !np.playing || !np.duration) return null;
     const left = np.duration - posNow();
@@ -1316,7 +1320,17 @@
     if (!st || npBar.hidden) { if (!box.hidden) { box.hidden = true; document.body.classList.remove("has-heads"); headsKey = ""; } return; }
     const secs = Math.ceil(st.left / 1000), clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
     const key = st.mode + "|" + np.id + "|" + (st.next ? st.next.id : "") + "|" + appQ.length;
-    if (key === headsKey) { const c = box.querySelector(".hclock"); if (c) c.textContent = clock + " left"; return; }
+    const autoIn = Math.ceil((st.left - AUTO_MS) / 1000);
+    if (st.mode === "empty" && autoPick && st.left <= AUTO_MS && !autoDone.has(np.id) && st.cur && st.cur.key) {
+      const top = suggest(st.cur, 1)[0];
+      autoDone.add(np.id);
+      if (top) { enqueue(top.t); toast("Auto-queued: " + top.t.title); headsKey = ""; return; }
+    }
+    if (key === headsKey) {
+      const c = box.querySelector(".hclock"); if (c) c.textContent = clock + " left";
+      const a = box.querySelector(".hauto"); if (a) a.textContent = autoIn > 0 ? `Auto-picks the top one in ${autoIn}s` : "";
+      return;
+    }
     headsKey = key;
     box.hidden = false; document.body.classList.add("has-heads");
     let html = `<div class="hline ${st.mode}"><span class="hclock">${clock} left</span><span class="hmsg">`;
@@ -1324,6 +1338,7 @@
     else if (st.mode === "clash") html += `Next up clashes: ${st.cur.key} → ${st.next.key} · ${esc(st.next.title)}`;
     else { const m = st.cur && st.cur.key && st.next.key ? relations(st.cur.key)[st.next.key] : null; html += `Next: ${esc(st.next.title)}${m ? " · " + MOVE_NAME[m] : ""}`; }
     html += `</span><button type="button" class="hx" aria-label="Dismiss">${IC.close}</button></div>`;
+    if (st.mode === "empty" && st.cur && st.cur.key) html += `<div class="hautoline"><span class="hauto">${autoPick && autoIn > 0 ? `Auto-picks the top one in ${autoIn}s` : ""}</span><label class="htog"><input type="checkbox" id="autoTog" ${autoPick ? "checked" : ""}> Auto-pick</label></div>`;
     if (st.mode !== "ok" && st.cur && st.cur.key) {
       const sug = suggest(st.cur, 3);
       html += sug.map(x => `<div class="hsug"><span class="k" style="background:${col(parseInt(x.t.key))}">${x.t.key}</span><span class="ht"><b>${esc(x.t.title)}</b><small>${esc(x.t.artist)} · ${x.t.tempo || "–"} · ${MOVE_NAME[x.m]}${pairCount(st.cur.id, x.t.id) ? ' · <span class="mem">★ played after</span>' : ""}</small></span><button type="button" class="hq" data-id="${esc(x.t.id)}">${st.mode === "clash" && !handed ? "Play next" : "Queue"}</button></div>`).join("");
@@ -1331,6 +1346,8 @@
     }
     box.innerHTML = html;
     box.querySelector(".hx").onclick = () => { headsDismissed.add(np.id); paintHeads(); };
+    const tog = box.querySelector("#autoTog");
+    if (tog) tog.onchange = () => { autoPick = tog.checked; ls.set("kw.autopick", autoPick); toast(autoPick ? "Auto-pick on — the top suggestion queues itself if you don't choose" : "Auto-pick off"); headsKey = ""; paintHeads(); };
     box.querySelectorAll(".hq").forEach(b => b.onclick = () => {
       const t = byId.get(b.dataset.id); if (!t) return;
       if (b.textContent === "Play next") { appQ.unshift(t.id); saveQ(); pump(); toast("Up next: " + t.title); } else enqueue(t);

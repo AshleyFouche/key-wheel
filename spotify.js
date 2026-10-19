@@ -172,7 +172,9 @@
   // Never fall back to some other device in the list — that silently moves the music off the phone.
   async function pickDevice() {
     const ds = await devices(), last = localStorage.getItem("kw.lastDevice");
-    return ds.find(d => d.is_active) || (last && ds.find(d => d.id === last)) || ds.find(d => d.type === "Smartphone") || null;
+    const ok = ds.filter(d => !d.is_restricted);
+    // Same order as before 1.18 (active, phone, then whatever Spotify lists first), but the device last seen playing wins.
+    return ds.find(d => d.is_active) || (last && ok.find(d => d.id === last)) || ok.find(d => d.type === "Smartphone") || ok.find(d => d.type === "Automobile") || ok[0] || ds[0] || null;
   }
   async function withDevice(fn) {
     try { return await fn(null); }

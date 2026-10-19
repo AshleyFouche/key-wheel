@@ -57,9 +57,10 @@
   const state = {
     key: saved.key === null ? null : (normKey(saved.key) || "8A"),
     on: Object.assign({}, ALL_ON, saved.on || {}),
-    anchor: null, trail: [], shown: 60
+    anchor: null, trail: [], shown: 60,
+    dir: ["build", "hold", "cool"].includes(saved.dir) ? saved.dir : "any"
   };
-  const saveState = () => ls.set("kw.state", { key: state.key, on: state.on, trail: state.trail.map(t => t.id), anchor: state.anchor ? state.anchor.id : null });
+  const saveState = () => ls.set("kw.state", { key: state.key, on: state.on, trail: state.trail.map(t => t.id), anchor: state.anchor ? state.anchor.id : null, dir: state.dir });
   let crate = ls.get("kw.crate", []);
   const saveCrate = () => { ls.set("kw.crate", crate); const b = $("crateBadge"); b.textContent = crate.length; b.hidden = !crate.length; };
 
@@ -213,7 +214,8 @@
     const ref = state.anchor ? state.anchor.tempo : null;
     const kord = k => parseInt(k) * 2 + (k.endsWith("B") ? 1 : 0);
     const rk = t => rel && rel[t.key] && state.on[rel[t.key]] ? order[rel[t.key]] : 9;
-    if (keyed) rows.sort((a, b) => rk(a) - rk(b) || (ref ? Math.abs(a.tempo - ref) - Math.abs(b.tempo - ref) : a.tempo - b.tempo));
+    if (keyed && state.dir !== "any" && state.anchor) { const sc = new Map(rows.map(t => [t, scoreFor(state.anchor, t, rel[t.key])])); rows.sort((a, b) => sc.get(b) - sc.get(a)); }
+    else if (keyed) rows.sort((a, b) => rk(a) - rk(b) || (ref ? Math.abs(a.tempo - ref) - Math.abs(b.tempo - ref) : a.tempo - b.tempo));
     else if (qq) rows.sort((a, b) => rk(a) - rk(b) || kord(a.key) - kord(b.key) || a.tempo - b.tempo);
     else rows.sort((a, b) => kord(a.key) - kord(b.key) || a.tempo - b.tempo);
     return { rows, rel, keyed, qq };
@@ -253,14 +255,35 @@
     if (!t.key) { toast("No key for this track yet"); return; }
     if (!fromTrail && state.trail[state.trail.length - 1] !== t) state.trail.push(t);
     state.anchor = t; state.key = t.key; q.value = "";
-    if (t.tempo) { tmin.value = t.tempo - 6; tmax.value = t.tempo + 6; }
+    if (t.tempo) { const [lo, hi] = tempoWindow(t); tmin.value = lo; tmax.value = hi; }
     state.shown = 60; saveState();
     if (quiet) { render(); return; }
     go("wheel"); render(); window.scrollTo({ top: 0, behavior: "smooth" });
   }
   function pick(k) { state.key = k; state.anchor = null; state.trail = []; state.shown = 60; saveState(); render(); }
   function showAll() { state.trail = []; state.key = null; state.anchor = null; tmin.value = ""; tmax.value = ""; sel.value = ""; state.shown = 60; saveState(); render(); }
-  function render() { paintWheel(); paintMoves(); paintAnchor(); paintList(); }
+  function render() { paintWheel(); paintDir(); paintMoves(); paintAnchor(); paintList(); }
+
+  // ---------- set direction ----------
+  const DIRS = [
+    { id: "any", name: "Any", tip: "No lean — closest key and tempo first" },
+    { id: "build", name: "Build", sym: "↑", tip: "Lifting the energy — a few tempo up, energy boosts, minor to major" },
+    { id: "hold", name: "Hold", sym: "→", tip: "Keeping it steady — near-same tempo, same or next-door keys" },
+    { id: "cool", name: "Cool", sym: "↓", tip: "Bringing it down — tempo down, major to minor, no boosts" }
+  ];
+  // Tempo range shown around the selected track, per direction.
+  const tempoWindow = t => ({ any: [-6, 6], build: [-1, 6], hold: [-3, 3], cool: [-6, 1] })[state.dir].map(d => t.tempo + d);
+  function paintDir() {
+    const box = $("dir"); if (!box) return;
+    box.innerHTML = '<span class="eyebrow">Direction</span>' + DIRS.map(d =>
+      `<button type="button" data-d="${d.id}" aria-pressed="${state.dir === d.id}" title="${d.tip}">${d.sym ? `<span aria-hidden="true">${d.sym}</span> ` : ""}${d.name}</button>`).join("");
+    box.querySelectorAll("button").forEach(b => b.onclick = () => {
+      state.dir = b.dataset.d; saveState();
+      if (state.anchor && state.anchor.tempo) { const [lo, hi] = tempoWindow(state.anchor); tmin.value = lo; tmax.value = hi; }
+      state.shown = 60; render(); paintSuggest();
+      toast(DIRS.find(d => d.id === state.dir).tip);
+    });
+  }
 
   // ---------- crate ----------
   function toggleCrate(id) {
@@ -431,7 +454,7 @@
   }
   $("logout").onclick = () => { Spotify.logout(); plCache = null; clearInterval(npTimer); np = null; paintNp(); paintSpotifyBtn(); paintMore(); toast("Disconnected from Spotify"); };
   $("backup").onclick = () => {
-    const data = { app: "key-wheel", saved: new Date().toISOString(), extra: ls.get("kw.extra", []), history: ls.get("kw.history", []), crate, state: { key: state.key, on: state.on } };
+    const data = { app: "key-wheel", saved: new Date().toISOString(), extra: ls.get("kw.extra", []), history: ls.get("kw.history", []), crate, state: { key: state.key, on: state.on, dir: state.dir } };
     const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "ashflow-backup.json"; document.body.appendChild(a); a.click(); a.remove();
   };
@@ -999,6 +1022,35 @@
   const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" });
   const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
   const openSess = new Set();
+  // Tempo across a flow: one line, each dot coloured by its key. Tap a dot for the track.
+  function flowChart(recs) {
+    const pts = recs.map((r, i) => ({ r, i })).filter(p => p.r.tempo);
+    if (pts.length < 2) return "";
+    const W = 340, H = 92, L = 30, R = 8, Tp = 8, B = 14;
+    let lo = Math.min(...pts.map(p => p.r.tempo)), hi = Math.max(...pts.map(p => p.r.tempo));
+    if (hi - lo < 6) { const mid = (hi + lo) / 2; lo = Math.floor(mid - 3); hi = Math.ceil(mid + 3); }
+    const x = i => L + (recs.length === 1 ? 0 : i * (W - L - R) / (recs.length - 1));
+    const y = v => Tp + (hi - v) * (H - Tp - B) / (hi - lo);
+    const path = pts.map((p, j) => (j ? "L" : "M") + x(p.i).toFixed(1) + " " + y(p.r.tempo).toFixed(1)).join(" ");
+    const grid = [hi, Math.round((hi + lo) / 2), lo].map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="g"/><text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end">${v}</text>`).join("");
+    const dots = pts.map(p => `<g class="pt" data-i="${p.i}"><circle cx="${x(p.i)}" cy="${y(p.r.tempo)}" r="14" fill="transparent"/><circle cx="${x(p.i)}" cy="${y(p.r.tempo)}" r="4.5" class="d" style="fill:${p.r.key ? col(parseInt(p.r.key)) : "var(--muted)"}"/></g>`).join("");
+    return `<div class="fchart" data-tips="${esc(JSON.stringify(recs.map(r => r.title + " · " + (r.key || "?") + " · " + (r.tempo || "–") + " tempo")))}">
+      <div class="fc-t">Tempo through the flow</div>
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Tempo from ${pts[0].r.tempo} to ${pts[pts.length - 1].r.tempo} across ${recs.length} tracks">${grid}<path d="${path}" class="ln"/>${dots}<text x="${L}" y="${H - 2}">start</text><text x="${W - R}" y="${H - 2}" text-anchor="end">end</text></svg>
+      <div class="fc-tip" hidden></div></div>`;
+  }
+  document.addEventListener("click", e => {
+    const g = e.target.closest(".fchart .pt"), fc = e.target.closest(".fchart");
+    document.querySelectorAll(".fchart .pt.on").forEach(n => { if (n !== g) n.classList.remove("on"); });
+    document.querySelectorAll(".fc-tip").forEach(tp => { if (!fc || !fc.contains(tp)) tp.hidden = true; });
+    if (!g) { if (fc) fc.querySelector(".fc-tip").hidden = true; return; }
+    const tip = fc.querySelector(".fc-tip"), tips = JSON.parse(fc.dataset.tips), i = +g.dataset.i;
+    tip.textContent = (i + 1) + ". " + tips[i]; tip.hidden = false; g.classList.add("on");
+    const svg = fc.querySelector("svg").getBoundingClientRect(), c = g.querySelector(".d").getBoundingClientRect(), box = fc.getBoundingClientRect();
+    const left = c.left + c.width / 2 - box.left;
+    tip.style.top = (c.top - box.top - 8) + "px";
+    tip.style.left = Math.max(4, Math.min(box.width - tip.offsetWidth - 4, left - tip.offsetWidth / 2)) + "px";
+  });
   function paintHistory() {
     const w = $("histWrap"), ss = sessions();
     w.innerHTML = "";
@@ -1010,7 +1062,7 @@
       const box = document.createElement("div"); box.className = "sess";
       const keys = recs.filter(r => r.key).map(r => `<span class="k" style="background:${col(parseInt(r.key))}">${r.key}</span>`).join("");
       box.innerHTML = `<div class="sess-h"><b>${i === 0 && Date.now() - ses.last < GAP ? "Tonight\'s flow · " : ""}${dayFmt.format(ses.start)}</b><span>${timeFmt.format(ses.start)} – ${timeFmt.format(ses.last)} · ${recs.length} tracks</span></div>
-        <div class="sess-keys">${keys}</div>
+        <div class="sess-keys">${keys}</div>${flowChart(recs)}
         <div class="acts"><button class="btn" type="button" data-a="crate">Use as crate</button><button class="btn ghost" type="button" data-a="addcrate">Add to crate</button><button class="btn ghost" type="button" data-a="toggle">${openSess.has(key) ? "Hide" : "Tracks"}</button><button class="btn ghost danger" type="button" data-a="del">Delete</button></div>`;
       if (openSess.has(key)) {
         const list = document.createElement("div"); list.className = "list";
@@ -1072,7 +1124,13 @@
     }
     return out.sort((a, b) => b.sc - a.sc).slice(0, n);
   }
-  let dirBonus = () => 0;   // set direction (see below)
+  function dirBonus(from, t, m, dt) {
+    const toB = from.key.endsWith("A") && t.key.endsWith("B"), toA = from.key.endsWith("B") && t.key.endsWith("A");
+    if (state.dir === "build") return (dt >= 1 && dt <= 5 ? 0.6 : dt > 5 ? 0.25 : dt < 0 ? -0.5 : 0) + (m === "boost" ? 0.4 : 0) + (toB ? 0.2 : 0) + (m === "same" ? -0.15 : 0);
+    if (state.dir === "hold") return (Math.abs(dt) <= 2 ? 0.4 : Math.abs(dt) > 4 ? -0.4 : 0) + (m === "same" || m === "adj" ? 0.25 : 0) + (m === "boost" ? -0.3 : 0);
+    if (state.dir === "cool") return (dt <= -1 && dt >= -5 ? 0.6 : dt < -5 ? 0.25 : dt > 0 ? -0.5 : 0) + (m === "boost" ? -0.5 : 0) + (toA ? 0.2 : 0) + (m === "same" ? -0.15 : 0);
+    return 0;
+  }
   let memBonus = () => 0;   // transition memory (see below)
   const tempoDelta = (from, t) => { const d = from.tempo && t.tempo ? t.tempo - from.tempo : 0; return d ? (d > 0 ? "+" : "") + d + " tempo" : "same tempo"; };
 
@@ -1125,6 +1183,8 @@
     if (!cur || !cur.key) { box.innerHTML = '<p class="note">Suggestions appear when the playing track has a key in your library.</p>'; return; }
     const sug = suggest(cur, 6);
     if (!sug.length) { box.innerHTML = '<p class="note">No close matches in your library.</p>'; return; }
+    const d = DIRS.find(d => d.id === state.dir);
+    $("sugNote").textContent = (state.dir === "any" ? "Best matches from what's playing, by key and tempo." : `Leaning ${d.name.toLowerCase()} ${d.sym} — change it on the Wheel tab.`) + " Swipe right to queue.";
     sug.forEach(x => {
       const r = rowEl(x.t, null, setAnchor);
       const lab = document.createElement("div"); lab.className = "rel";

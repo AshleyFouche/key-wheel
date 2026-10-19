@@ -563,9 +563,12 @@
     const box = $("pvQueue");
     if (!np) { box.innerHTML = ""; return; }
     try {
-      const items = (await Spotify.upNext()).slice(0, 10);
+      // Spotify pads its queue by looping the current track or playlist, even with repeat off.
+      // Keep only the real upcoming tracks: skip the playing track and stop as soon as the list starts repeating.
+      const raw = await Spotify.upNext(), seen = new Set([np.id]), items = [];
+      for (const it of raw) { if (seen.has(it.id)) break; seen.add(it.id); items.push(it); if (items.length >= 10) break; }
       const cur = byId.get(np.id), rel = cur && cur.key ? relations(cur.key) : null;
-      box.innerHTML = items.length ? "" : '<p class="note">Spotify\'s queue is empty. Switch to ＋ Queue and tap ⤓ on tracks to line them up.</p>';
+      box.innerHTML = items.length ? "" : '<p class="note">Nothing queued after this track. Switch to ＋ Queue and tap ⤓ on tracks to line them up.</p>';
       items.forEach(it => {
         const rec = byId.get(it.id) || { id: it.id, title: it.title, artist: it.artist, tempo: 0, key: null };
         const r = rowEl(rec, null, setAnchor);

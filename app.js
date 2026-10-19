@@ -511,7 +511,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.16";
+  const APP_VERSION = "1.17";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1113,14 +1113,19 @@
         w.innerHTML = `<div class="bhead"><div class="bimg" style="background-image:url('${esc(a.image)}')"></div><div><div class="bt">${esc(a.name)}</div>
           <div class="bs">${a.artists.map(x => `<a href="#" data-artist="${esc(x.id)}" style="color:inherit">${esc(x.name)}</a>`).join(", ")}${a.year ? " · " + a.year : ""} · ${a.total && a.total > a.tracks.length ? `showing ${a.tracks.length} of ${a.total} tracks` : a.tracks.length + " tracks"}</div>
           <div class="bs">${known} with a key in your library</div></div></div>
-          <div class="crate-actions"><button class="btn" type="button" id="bPlay">${IC.play}Play</button><button class="btn" type="button" id="bShuf">${IC.shuffle}Shuffle</button><button class="btn ghost" type="button" id="bAllQ">Queue all with keys</button><a class="btn ghost" href="https://open.spotify.com/album/${esc(a.id)}">Open in Spotify</a></div>`;
+          <div class="crate-actions"><button class="btn" type="button" id="bPlay">${IC.play}Play all ${a.tracks.length}</button><button class="btn" type="button" id="bShuf">${IC.shuffle}Shuffle all</button><button class="btn ghost" type="button" id="bAllQ">Queue all</button><a class="btn ghost" href="https://open.spotify.com/album/${esc(a.id)}">Open in Spotify</a></div>`;
         w.querySelectorAll("[data-artist]").forEach(el => el.onclick = e => { e.preventDefault(); openArtist(el.dataset.artist); });
         const list = document.createElement("div"); list.className = "list";
         a.tracks.forEach(t => list.appendChild(rowEl(recOf(t.id, t), null, setAnchor)));
         w.appendChild(list);
         $("bPlay").onclick = () => playMany({ album: a.id, name: a.name });
         $("bShuf").onclick = () => playMany({ ids: shuffled(a.tracks.map(t => t.id)), name: a.name, shuffle: true });
-        $("bAllQ").onclick = () => { const ks = a.tracks.map(t => byId.get(t.id)).filter(r => r && r.key); if (!ks.length) { toast("None of these have a key yet"); return; } ks.forEach(r => appQ.push(r.id)); saveQ(); pump(); toast(`Queued ${ks.length} tracks`); };
+        $("bAllQ").onclick = () => {
+          if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return; }
+          if (!Spotify.canPlay()) { showReconnect(); return; }
+          const ids = a.tracks.map(t => t.id).filter(id => !appQ.includes(id) && id !== handed);
+          ids.forEach(id => appQ.push(id)); saveQ(); pump(); toast(`Queued ${ids.length} tracks from ${a.name}`);
+        };
       } else {
         let a = page.data;
         if (!a) { try { a = page.data = await Spotify.getArtist(page.id); } catch (e) { a = { id: page.id, name: page.name || "Artist", image: "", genres: [], albums: [], albumsError: e.message }; } }
@@ -1128,7 +1133,7 @@
         const mine = T.filter(t => t.artist.toLowerCase().split(/,\s*/).includes(name) || t.artist.toLowerCase() === name);
         w.innerHTML = `<div class="bhead artist"><div class="bimg" style="background-image:url('${esc(a.image)}')"></div><div><div class="bt">${esc(a.name)}</div>
           <div class="bs">${a.genres.slice(0, 3).map(esc).join(" · ")}</div><div class="bs">${mine.length} in your library</div></div></div>
-          <div class="crate-actions"><button class="btn" type="button" id="bPlay">${IC.play}Play all</button><button class="btn" type="button" id="bShuf">${IC.shuffle}Shuffle</button><a class="btn ghost" href="https://open.spotify.com/artist/${esc(a.id)}">Open in Spotify</a></div>`;
+          <div class="crate-actions"><button class="btn" type="button" id="bPlay">${IC.play}Play all</button><button class="btn" type="button" id="bShuf">${IC.shuffle}Shuffle all</button><a class="btn ghost" href="https://open.spotify.com/artist/${esc(a.id)}">Open in Spotify</a></div>`;
         $("bPlay").onclick = () => playArtist(a, mine, false);
         $("bShuf").onclick = () => playArtist(a, mine, true);
         if (mine.length) {
@@ -1185,6 +1190,14 @@
   const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" });
   const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
   const openSess = new Set();
+  // Label a flow by when it started: morning 5–12, afternoon 12–17, evening 17–21, night 21–5.
+  function partOfDay(t) {
+    const h = new Date(t).getHours();
+    if (h >= 5 && h < 12) return { word: "morning", live: "This morning" };
+    if (h >= 12 && h < 17) return { word: "afternoon", live: "This afternoon" };
+    if (h >= 17 && h < 21) return { word: "evening", live: "This evening" };
+    return { word: "night", live: "Tonight" };
+  }
   // BPM across a flow: one line, each dot coloured by its key. Tap a dot for the track.
   function flowChart(recs) {
     const pts = recs.map((r, i) => ({ r, i })).filter(p => p.r.tempo);
@@ -1224,7 +1237,7 @@
       const recs = ses.plays.map(e => byId.get(e.id) || { id: e.id, title: e.title, artist: e.artist, tempo: 0, key: null });
       const box = document.createElement("div"); box.className = "sess";
       const keys = recs.filter(r => r.key).map(r => `<span class="k" style="background:${col(parseInt(r.key))}">${r.key}</span>`).join("");
-      box.innerHTML = `<div class="sess-h"><b>${i === 0 && Date.now() - ses.last < GAP ? "Tonight\'s flow · " : ""}${dayFmt.format(ses.start)}</b><span>${timeFmt.format(ses.start)} – ${timeFmt.format(ses.last)} · ${recs.length} tracks</span></div>
+      box.innerHTML = `<div class="sess-h"><b>${i === 0 && Date.now() - ses.last < GAP ? partOfDay(ses.start).live + "\'s flow · " + dayFmt.format(ses.start) : dayFmt.format(ses.start) + " · " + partOfDay(ses.start).word}</b><span>${timeFmt.format(ses.start)} – ${timeFmt.format(ses.last)} · ${recs.length} tracks</span></div>
         <div class="sess-keys">${keys}</div>${flowChart(recs)}
         <div class="acts"><button class="btn" type="button" data-a="crate">Use as crate</button><button class="btn ghost" type="button" data-a="addcrate">Add to crate</button><button class="btn ghost" type="button" data-a="toggle">${openSess.has(key) ? "Hide" : "Tracks"}</button><button class="btn ghost danger" type="button" data-a="del">Delete</button></div>`;
       if (openSess.has(key)) {

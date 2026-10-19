@@ -553,7 +553,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.4";
+  const APP_VERSION = "2.5";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -903,7 +903,10 @@
       const fresh = await Spotify.playerState();
       // Spotify briefly reports "nothing playing" between tracks or when the phone's connection blips.
       // Keep showing the last track unless it has said so for 12 seconds straight.
-      if (fresh) { emptySince = 0; np = fresh; noteArt(fresh.id, fresh.art); }
+      if (fresh) {
+        emptySince = 0; np = fresh; noteArt(fresh.id, fresh.art);
+        const kr = byId.get(fresh.id); if (kr && kr.key) { lastKeyed = { id: kr.id, at: Date.now() }; ls.set("kwb.lastKeyed", lastKeyed); }
+      }
       else { if (!emptySince) emptySince = Date.now(); if (!np || Date.now() - emptySince >= 12000) np = null; }
       if (np && np.progress >= 30000 && loggedFor !== np.id) { loggedFor = np.id; addHistory([{ id: np.id, title: np.title, artist: np.artist, at: np.at - np.progress, src: "app" }]); }
       if (Date.now() - lastRecentSync > 120000) syncRecent();
@@ -918,6 +921,15 @@
     } catch (e) { if (e.code === "auth") paintSpotifyBtn(); }
   }
   let emptySince = 0;
+  // What suggestions are based on: the playing track if it has a key; otherwise the last track that did
+  // (within 3 hours), so an unknown song from Spotify's autoplay doesn't break the chain.
+  let lastKeyed = ls.get("kwb.lastKeyed", null);
+  function mixRef() {
+    const cur = np && byId.get(np.id);
+    if (cur && cur.key) return { rec: cur, fallback: false };
+    if (lastKeyed && Date.now() - lastKeyed.at < 3 * 3600e3) { const r = byId.get(lastKeyed.id); if (r && r.key) return { rec: r, fallback: true }; }
+    return { rec: null, fallback: false };
+  }
   function startPolling() {
     clearInterval(npTimer); pollNow();
     npTimer = setInterval(pollNow, !$("view-playing").hidden ? 3000 : 5000);
@@ -972,7 +984,7 @@
     try {
       if (isLive()) {
         if (!appQ.length) {
-          const cur = byId.get(np.id), s = cur && cur.key ? suggest(cur, 1)[0] : null;
+          const cur = mixRef().rec, s = cur ? suggest(cur, 1)[0] : null;
           if (s) { await liveRun(() => liveInsertNext(s.t.id)); await waitUpNext(s.t.id); toast("Nothing was lined up — playing " + s.t.title); }
         }
         await Spotify.next(); setTimeout(pollNow, 700); return;
@@ -985,7 +997,7 @@
         let up = []; try { up = await Spotify.upNext(); } catch (e) {}
         up = up.filter(t => !np || t.id !== np.id);
         if (!up.length) {
-          const cur = np && byId.get(np.id), s = cur && cur.key ? suggest(cur, 1)[0] : null;
+          const cur = mixRef().rec, s = cur ? suggest(cur, 1)[0] : null;
           if (s) { await playNow(s.t.id); toast("Nothing was lined up — playing " + s.t.title); setTimeout(pollNow, 900); return; }
         }
       }
@@ -1624,11 +1636,11 @@
     if (!np || !np.playing || !np.duration) return null;
     const left = np.duration - posNow();
     if (left > 60000 || left < 1500 || headsDismissed.has(np.id)) return null;
-    const cur = byId.get(np.id), nextId = handed || appQ[0] || null, next = nextId ? recOf(nextId, qMeta.get(nextId)) : null;
+    const ref = mixRef(), cur = ref.rec, nextId = handed || appQ[0] || null, next = nextId ? recOf(nextId, qMeta.get(nextId)) : null;
     let mode = "ok";
     if (!next) mode = "empty";
     else if (cur && cur.key && next.key && !relations(cur.key)[next.key]) mode = "clash";
-    return { left, cur, next, mode };
+    return { left, cur, next, mode, fallback: ref.fallback };
   }
   let headsKey = "";
   function paintHeads() {
@@ -1656,6 +1668,7 @@
     html += `</span><button type="button" class="hx" aria-label="Dismiss">${IC.close}</button></div>`;
     if (st.mode === "empty" && st.cur && st.cur.key) html += `<div class="hautoline"><span class="hauto">${autoPick && autoIn > 0 ? `Auto-picks the top one in ${autoIn}s` : ""}</span><label class="htog"><input type="checkbox" id="autoTog" ${autoPick ? "checked" : ""}> Auto-pick</label></div>`;
     if (st.mode !== "ok" && st.cur && st.cur.key) {
+      if (st.fallback) html += `<div class="hautoline"><span>This track has no key yet — following <b>${esc(st.cur.title)}</b>, the last one that did</span></div>`;
       const sug = suggest(st.cur, 3);
       html += sug.map(x => `<div class="hsug"><span class="k" style="background:${col(parseInt(x.t.key))}">${x.t.key}</span><span class="ht"><b>${esc(x.t.title)}</b><small>${esc(x.t.artist)} · ${x.t.tempo || "–"} · ${MOVE_NAME[x.m]}${pairCount(st.cur.id, x.t.id) ? ' · <span class="mem">★ played after</span>' : ""}</small></span><button type="button" class="hq" data-id="${esc(x.t.id)}">${st.mode === "clash" && !handed ? "Play next" : "Queue"}</button></div>`).join("");
       if (!sug.length) html += '<div class="hsug"><small>No close matches in your library for this one.</small></div>';
@@ -1682,13 +1695,14 @@
   // ---------- Suggested next on the Playing tab ----------
   function paintSuggest() {
     const box = $("pvSuggest"); if (!box || $("view-playing").hidden) return;
-    const cur = np && byId.get(np.id);
+    const ref = mixRef(), cur = ref.rec;
     box.innerHTML = "";
-    if (!cur || !cur.key) { box.innerHTML = '<p class="note">Suggestions appear when the playing track has a key in your library.</p>'; return; }
+    if (!cur) { $("sugNote").textContent = "Suggestions appear once a track with a key in your library has played."; return; }
     const sug = suggest(cur, 6);
     if (!sug.length) { box.innerHTML = '<p class="note">No close matches in your library.</p>'; return; }
     const d = DIRS.find(d => d.id === state.dir);
-    $("sugNote").textContent = (state.dir === "any" ? "Best matches from what's playing, by key and BPM." : `Leaning ${d.name.toLowerCase()} ${d.sym} — change it on the Wheel tab.`) + " Swipe right to queue.";
+    $("sugNote").textContent = (ref.fallback ? `This track has no key yet, so these follow “${cur.title}”, the last one that did. ` : "") +
+      (state.dir === "any" ? (ref.fallback ? "" : "Best matches from what's playing, by key and BPM.") : `Leaning ${d.name.toLowerCase()} ${d.sym} — change it on the Wheel tab.`) + " Swipe right to queue.";
     sug.forEach(x => {
       const r = rowEl(x.t, null, setAnchor, cur);
       let lab = r.querySelector(".tt .rel");

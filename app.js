@@ -1,4 +1,4 @@
-// Key Wheel app: library, Camelot wheel, set path, crate builder, Spotify playlists.
+// Ashflow: library, Camelot wheel, thread, crate builder, flows, Spotify playback and playlists.
 (function () {
   const $ = id => document.getElementById(id);
   const ls = {
@@ -137,7 +137,7 @@
       const t = state.anchor;
       a.innerHTML = `<span class="eyebrow">Mixing out of</span><span class="t">${esc(t.title)}</span>
         <span class="m">${esc(t.artist)} · ${t.key} ${NAMES[t.key]} · ${t.tempo || "–"} tempo</span>
-        <span class="acts"><button class="btn ghost" type="button" id="aAdd">${crate.includes(t.id) ? "In crate ✓" : "+ Crate"}</button>${state.trail.length > 1 ? '<button class="btn ghost" type="button" id="back1">‹ Back one</button>' : ""}<button class="btn ghost" type="button" id="clr">${state.trail.length > 1 ? "Clear path" : "Clear track"}</button><button class="btn" type="button" id="all">All tracks</button></span>`;
+        <span class="acts"><button class="btn ghost" type="button" id="aAdd">${crate.includes(t.id) ? "In crate ✓" : "+ Crate"}</button>${state.trail.length > 1 ? '<button class="btn ghost" type="button" id="back1">‹ Back one</button>' : ""}<button class="btn ghost" type="button" id="clr">${state.trail.length > 1 ? "Clear thread" : "Clear track"}</button><button class="btn" type="button" id="all">All tracks</button></span>`;
       $("clr").onclick = () => { state.trail = []; state.anchor = null; $("tmin").value = ""; $("tmax").value = ""; saveState(); render(); };
       $("aAdd").onclick = () => { toggleCrate(t.id); render(); };
       const b1 = $("back1");
@@ -153,7 +153,7 @@
     const all = $("all"); if (all) all.onclick = showAll;
     if (state.trail.length > 1) {
       const tr = document.createElement("div"); tr.className = "trail";
-      tr.innerHTML = '<span class="eyebrow">Your path so far</span>';
+      tr.innerHTML = '<span class="eyebrow">Your thread so far</span>';
       const ol = document.createElement("ol");
       state.trail.forEach((t, i) => {
         const li = document.createElement("li"), b = document.createElement("button");
@@ -164,13 +164,13 @@
       });
       tr.appendChild(ol);
       const sp = document.createElement("div"); sp.className = "acts";
-      sp.innerHTML = '<button class="btn" type="button" id="pathCrate">Save path as crate</button>';
+      sp.innerHTML = '<button class="btn" type="button" id="pathCrate">Save thread as crate</button>';
       tr.appendChild(sp); a.appendChild(tr);
       $("pathCrate").onclick = () => {
         crate = [...new Set(state.trail.map(t => t.id))]; saveCrate();
         const first = state.trail[0], last = state.trail[state.trail.length - 1];
-        $("crateName").value = `ASH//F Set · ${first.title} → ${last.title}`.slice(0, 100);
-        go("crate"); window.scrollTo(0, 0); toast(`Crate set to your ${crate.length}-track path`);
+        $("crateName").value = `Ashflow · ${first.title} → ${last.title}`.slice(0, 100);
+        go("crate"); window.scrollTo(0, 0); toast(`Crate set to your ${crate.length}-track thread`);
       };
     }
   }
@@ -297,7 +297,7 @@
     };
     list.addEventListener("pointerup", end); list.addEventListener("pointercancel", end);
   })();
-  $("fromPath").onclick = () => { state.trail.forEach(t => { if (!crate.includes(t.id)) crate.push(t.id); }); saveCrate(); paintCrate(); toast(state.trail.length ? "Set path added" : "No set path yet — tap tracks on the wheel first"); };
+  $("fromPath").onclick = () => { state.trail.forEach(t => { if (!crate.includes(t.id)) crate.push(t.id); }); saveCrate(); paintCrate(); toast(state.trail.length ? "Thread added" : "No thread yet — tap tracks on the wheel first"); };
   $("fromList").onclick = () => { currentRows.slice(0, 100).forEach(t => { if (!crate.includes(t.id)) crate.push(t.id); }); saveCrate(); paintCrate(); toast("Added the current list"); };
   $("clearCrate").onclick = () => {
     const b = $("clearCrate");
@@ -340,7 +340,7 @@
         st.innerHTML = `Added ${fresh.length} tracks to “${esc(name)}”${ids.length - fresh.length ? ` (${ids.length - fresh.length} ${ids.length - fresh.length === 1 ? "was" : "were"} already there)` : ""}. <a href="https://open.spotify.com/playlist/${esc(exId)}" target="_blank" rel="noopener">Open in Spotify</a>`;
       } else {
         const name = $("crateName").value.trim() || ("ASH//F crate · " + new Date().toLocaleDateString());
-        const pl = await Spotify.createPlaylist(name, "Built in Key Wheel", ids);
+        const pl = await Spotify.createPlaylist(name, "Built in Ashflow", ids);
         st.className = "status ok";
         st.innerHTML = `Saved “${esc(name)}” with ${ids.length} tracks. <a href="${esc(pl.external_urls?.spotify || "#")}" target="_blank" rel="noopener">Open in Spotify</a>`;
         plCache = null;
@@ -412,13 +412,13 @@
   $("backup").onclick = () => {
     const data = { app: "key-wheel", saved: new Date().toISOString(), extra: ls.get("kw.extra", []), history: ls.get("kw.history", []), crate, state: { key: state.key, on: state.on } };
     const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "key-wheel-backup.json"; document.body.appendChild(a); a.click(); a.remove();
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "ashflow-backup.json"; document.body.appendChild(a); a.click(); a.remove();
   };
   $("restore").onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     try {
       const d = JSON.parse(await f.text());
-      if (d.app !== "key-wheel") throw new Error("not a Key Wheel backup");
+      if (d.app !== "key-wheel") throw new Error("not an Ashflow backup");
       ls.set("kw.extra", d.extra || []); if (d.history) ls.set("kw.history", d.history); crate = d.crate || []; saveCrate();
       await loadLibrary(); crateOptions(); render(); paintMore(); toast("Backup restored");
     } catch (err) { toast("Couldn't restore: " + err.message); }
@@ -465,7 +465,7 @@
   function showReconnect() {
     npBar.hidden = false; document.body.classList.add("has-np");
     $("npArt").style.backgroundImage = "";
-    $("npTitle").textContent = "Reconnect Spotify to play from Key Wheel";
+    $("npTitle").textContent = "Reconnect Spotify to play from Ashflow";
     $("npSub").textContent = "One-time step to allow playback control.";
     $("npPP").textContent = "↻"; $("npPP").onclick = () => Spotify.login().catch(err => toast(err.message));
   }
@@ -616,14 +616,14 @@
   function paintHistory() {
     const w = $("histWrap"), ss = sessions();
     w.innerHTML = "";
-    if (!ss.length) { w.innerHTML = '<p class="note">Nothing yet. Play some tracks through Spotify (from Key Wheel or Spotify itself) and they\'ll appear here once each has played for 30 seconds.</p>'; return; }
+    if (!ss.length) { w.innerHTML = '<p class="note">Nothing yet. Play some tracks through Spotify (from Ashflow or Spotify itself) and they\'ll appear here once each has played for 30 seconds.</p>'; return; }
     ss.forEach((ses, i) => {
       const key = String(ses.start);
       if (i === 0 && !openSess.size) openSess.add(key);
       const recs = ses.plays.map(e => byId.get(e.id) || { id: e.id, title: e.title, artist: e.artist, tempo: 0, key: null });
       const box = document.createElement("div"); box.className = "sess";
       const keys = recs.filter(r => r.key).map(r => `<span class="k" style="background:${col(parseInt(r.key))}">${r.key}</span>`).join("");
-      box.innerHTML = `<div class="sess-h"><b>${i === 0 && Date.now() - ses.last < GAP ? "Tonight · " : ""}${dayFmt.format(ses.start)}</b><span>${timeFmt.format(ses.start)} – ${timeFmt.format(ses.last)} · ${recs.length} tracks</span></div>
+      box.innerHTML = `<div class="sess-h"><b>${i === 0 && Date.now() - ses.last < GAP ? "Tonight\'s flow · " : ""}${dayFmt.format(ses.start)}</b><span>${timeFmt.format(ses.start)} – ${timeFmt.format(ses.last)} · ${recs.length} tracks</span></div>
         <div class="sess-keys">${keys}</div>
         <div class="acts"><button class="btn" type="button" data-a="crate">Use as crate</button><button class="btn ghost" type="button" data-a="addcrate">Add to crate</button><button class="btn ghost" type="button" data-a="toggle">${openSess.has(key) ? "Hide tracks" : "Show tracks"}</button><button class="btn ghost danger" type="button" data-a="del">Delete</button></div>`;
       if (openSess.has(key)) {
@@ -639,8 +639,8 @@
       box.querySelector(".sess-h").onclick = box.querySelector('[data-a="toggle"]').onclick = () => { openSess.has(key) ? openSess.delete(key) : openSess.add(key); paintHistory(); };
       box.querySelector('[data-a="crate"]').onclick = () => {
         crate = [...new Set(ses.plays.map(e => e.id))]; saveCrate();
-        $("crateName").value = "ASH//F Session · " + dayFmt.format(ses.start) + " " + new Date(ses.start).getFullYear();
-        go("crate"); window.scrollTo(0, 0); toast(`Crate set to this session (${crate.length} tracks)`);
+        $("crateName").value = "Ashflow · " + dayFmt.format(ses.start) + " " + new Date(ses.start).getFullYear();
+        go("crate"); window.scrollTo(0, 0); toast(`Crate set to this flow (${crate.length} tracks)`);
       };
       box.querySelector('[data-a="addcrate"]').onclick = () => {
         let n = 0; ses.plays.forEach(e => { if (!crate.includes(e.id)) { crate.push(e.id); n++; } });
@@ -652,7 +652,7 @@
         if (!del.dataset.confirm) { del.dataset.confirm = "1"; del.textContent = "Tap again to delete"; setTimeout(() => { delete del.dataset.confirm; del.textContent = "Delete"; }, 3000); return; }
         const set = new Set(ses.plays);
         ls.set("kw.history", ls.get("kw.history", []).filter(e => !ses.plays.some(p => p.id === e.id && p.at === e.at)));
-        paintHistory(); toast("Session deleted");
+        paintHistory(); toast("Flow deleted");
       };
       w.appendChild(box);
     });
@@ -661,7 +661,7 @@
   // ---------- tabs + spotify button ----------
   function go(v) {
     document.querySelectorAll(".view").forEach(s => s.hidden = s.id !== "view-" + v);
-    document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === v));
+    document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === (v === "info" ? "more" : v)));
     document.body.classList.toggle("on-playing", v === "playing");
     if (v === "playing") { paintPlaying(); loadUpNext(); if (Spotify.connected() && Spotify.canPlay()) startPolling(); }
     else if (typeof npTimer !== "undefined" && npTimer && Spotify.canPlay()) startPolling();
@@ -671,6 +671,8 @@
     if (v === "more") paintMore();
     try { sessionStorage.setItem("kw.view", v); } catch (e) {}
   }
+  $("openInfo").onclick = () => { go("info"); window.scrollTo(0, 0); };
+  $("infoBack").onclick = () => { go("more"); window.scrollTo(0, 0); };
   document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => { go(b.dataset.view); window.scrollTo(0, 0); });
   function paintSpotifyBtn() {
     const b = $("spotifyBtn");

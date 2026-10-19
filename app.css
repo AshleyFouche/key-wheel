@@ -188,3 +188,17 @@ body.on-playing.has-np{padding-bottom:calc(var(--tabs-h) + env(safe-area-inset-b
 .sess-keys .k{font-size:10px;padding:1px 5px}
 #histWrap{display:grid;gap:12px}
 .row .when{font-size:10px;color:var(--muted);font-family:var(--mono)}
+.brand .fl{font-size:inherit;letter-spacing:inherit;margin:0;color:var(--accent)}
+
+/* Info guide */
+.infolink{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;cursor:pointer;font-size:22px;color:var(--muted)}
+.infolink span:first-child{display:grid;gap:2px}
+.infolink b{font-size:16px;color:var(--ink)}
+.infolink small{font-size:12px}
+.guide details{border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:0 14px}
+.guide summary{cursor:pointer;padding:13px 0;font-weight:600;list-style:none;display:flex;justify-content:space-between}
+.guide summary::-webkit-details-marker{display:none}
+.guide summary::after{content:"+";color:var(--muted);font-size:18px;line-height:1}
+.guide details[open] summary::after{content:"–"}
+.guide ul,.guide ol{margin:0 0 14px;padding-left:20px;display:grid;gap:8px;color:var(--muted);font-size:14px;line-height:1.5}
+.guide b{color:var(--ink);font-weight:600}

@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Key Wheel</title>
-<meta name="description" content="ASH//F key wheel: browse the crates by Camelot key, build sets and save crates to Spotify.">
+<title>Ashflow</title>
+<meta name="description" content="Ashflow: browse your crates by key, follow the flow, and turn listening sessions into Spotify playlists.">
 <meta name="theme-color" content="#121014">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Key Wheel">
+<meta name="apple-mobile-web-app-title" content="Ashflow">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
@@ -19,7 +19,7 @@
 </head>
 <body>
 <header class="top">
-  <div class="brand">Key Wheel <span>ASH//F</span></div>
+  <div class="brand">Ash<span class="fl">flow</span></div>
   <button class="pill" id="spotifyBtn" type="button">Connect Spotify</button>
 </header>
 
@@ -69,8 +69,8 @@
 
   <!-- HISTORY -->
   <section class="view" id="view-history" hidden>
-    <h2>History</h2>
-    <p class="note">Everything you play through Spotify, grouped into sessions. A gap of more than an hour starts a new session. Turn any session into a crate, then save it as a playlist.</p>
+    <h2>Flows</h2>
+    <p class="note">Everything you play through Spotify, grouped into flows. A gap of more than an hour starts a new flow. Turn any flow into a crate, then save it as a playlist.</p>
     <div id="histWrap"></div>
   </section>
 
@@ -79,7 +79,7 @@
     <h2>Crate in progress</h2>
     <p class="note">Tap <b>+</b> on any track to add it here. Drag the <b>≡</b> handle to change the order. Then save it to Spotify as a new playlist or add it to one you already have.</p>
     <div class="crate-actions">
-      <button class="btn ghost" id="fromPath" type="button">Add my set path</button>
+      <button class="btn ghost" id="fromPath" type="button">Add my thread</button>
       <button class="btn ghost" id="fromList" type="button">Add current list (up to 100)</button>
       <button class="btn ghost danger" id="clearCrate" type="button">Clear</button>
     </div>
@@ -92,7 +92,7 @@
       </div>
       <div id="destNew">
         <label for="crateName">Playlist name</label>
-        <input id="crateName" type="text" placeholder="ASH//F 6 Main Peak · Techno · 128–132">
+        <input id="crateName" type="text" placeholder="Ashflow · Techno · 128–132">
       </div>
       <div id="destExisting" hidden>
         <label for="existingPl">Your playlist</label>
@@ -111,8 +111,96 @@
     <div id="plWrap"></div>
   </section>
 
+  <!-- INFO -->
+  <section class="view guide" id="view-info" hidden>
+    <button class="btn ghost back" id="infoBack" type="button">‹ More</button>
+    <h2>How Ashflow works</h2>
+    <p class="note">Ashflow helps you find tracks that mix well together, play them through Spotify, and turn a night of listening into a playlist.</p>
+
+    <details open><summary>Getting started</summary>
+      <ul>
+        <li>Open the app from its home-screen icon. To install it again: open <b>ashleyfouche.github.io/key-wheel</b> in Safari, tap <b>Share → Add to Home Screen</b>.</li>
+        <li>Tap <b>Connect Spotify</b> (top right) and approve. Playback needs Spotify Premium.</li>
+        <li>If a bar says <b>Reconnect Spotify</b>, tap it once. That happens when a new feature needs an extra permission.</li>
+      </ul>
+    </details>
+
+    <details><summary>The wheel and keys</summary>
+      <ul>
+        <li>Every key has a number from 1 to 12 and a letter. <b>A</b> is minor (darker), <b>B</b> is major (brighter). The outer ring is B, the inner ring is A.</li>
+        <li>Tap a key to see the keys that mix well with it and your tracks in them. Tap the centre to go back to all tracks.</li>
+        <li><b>Same key</b>: the safest blend. <b>One step</b>: one number up or down, same letter. <b>Mood switch</b>: same number, other letter (lifts or darkens). <b>Energy boost</b>: two numbers up, use sparingly. <b>Diagonal</b>: minor one up to major, or major one down to minor.</li>
+        <li>Tap a move button to show only that move. Tap it again to show every move.</li>
+        <li>Search always looks through every track, whatever key is selected.</li>
+      </ul>
+    </details>
+
+    <details><summary>Your thread</summary>
+      <ul>
+        <li>Tap a track's name to mix out of it. The wheel jumps to its key, the tempo filter sets to 6 either side, and the list shows what fits.</li>
+        <li>Keep tapping tracks to build your <b>thread</b>, the chain of tracks you've moved through.</li>
+        <li><b>‹ Back one</b> steps back a track. Tap any track in the thread to jump back to it. <b>Clear thread</b> starts again.</li>
+        <li><b>Save thread as crate</b> puts the whole thread into your crate in order.</li>
+      </ul>
+    </details>
+
+    <details><summary>Playing through Spotify</summary>
+      <ul>
+        <li>Each track has two buttons. The first talks to Spotify; the <b>+</b> adds it to your crate.</li>
+        <li>With <b>▶ Play now</b> selected, the first button plays the track straight away. With <b>＋ Queue</b> selected it becomes <b>⤓</b> and adds the track to Spotify's queue instead.</li>
+        <li>Music plays on whichever device Spotify is using: your phone, a speaker, AirPods or your laptop. Spotify needs to be open, or recently used, somewhere.</li>
+        <li>The bar at the bottom shows what's playing, with its key. <b>Mix out of this</b> makes it your starting track.</li>
+        <li><b>Follow</b>: every new track Spotify plays becomes the track you mix out of and joins your thread automatically.</li>
+        <li>The <b>Playing</b> tab shows large artwork, a progress bar you can drag, skip buttons, and <b>Up next</b> with how each queued track mixes from what's playing. A clash shows as <b>Key clash</b>.</li>
+      </ul>
+    </details>
+
+    <details><summary>Flows</summary>
+      <ul>
+        <li>Every track that plays for 30 seconds or more is saved, whether you started it here or in Spotify. Quick skips are left out.</li>
+        <li>Plays are grouped into <b>flows</b>. A break of more than an hour starts a new one.</li>
+        <li>Opening the app also collects your last 50 plays from Spotify, so tracks played while the app was closed still appear.</li>
+        <li><b>Use as crate</b> starts a fresh crate from a flow. <b>Add to crate</b> adds a flow after what's already there, skipping repeats, so you can combine nights.</li>
+      </ul>
+    </details>
+
+    <details><summary>Crates and saving to Spotify</summary>
+      <ul>
+        <li>Add tracks with <b>+</b>, your thread, a flow, or the current list.</li>
+        <li>Drag the <b>≡</b> handle to change the order. Tick <b>Sort by tempo</b> to order by tempo when saving.</li>
+        <li><b>New playlist</b> creates a private Spotify playlist. <b>Add to existing</b> adds to one of your playlists and skips tracks already in it.</li>
+        <li>Spotify doesn't let apps move playlists into folders, so drag them into a folder in Spotify yourself.</li>
+      </ul>
+    </details>
+
+    <details><summary>Your playlists</summary>
+      <ul>
+        <li>The <b>Playlists</b> tab shows playlists you own, with keys from your library. Spotify only shares the tracks of playlists you own, so copy anything else into one of yours first.</li>
+        <li>Tracks marked <b>?</b> don't have a key in your library yet.</li>
+      </ul>
+    </details>
+
+    <details><summary>Adding keys for new tracks</summary>
+      <ol>
+        <li>Put the new tracks in one of your own Spotify playlists, open it on your phone and tap <b>Mix</b> so keys and tempos show.</li>
+        <li>Screenshot the list as you scroll and send the screenshots to Claude.</li>
+        <li>Claude replies with lines of text. Copy them, go to <b>More → Add tracks</b>, paste and tap <b>Add to library</b>.</li>
+      </ol>
+    </details>
+
+    <details><summary>Good to know</summary>
+      <ul>
+        <li>Your crate, flows and added tracks are stored on this phone. Use <b>More → Back up my data</b> now and then, especially before changing phones.</li>
+        <li>Spotify asks you to log in again about every six months.</li>
+        <li>The wheel and your library work offline. Playing and saving need a connection.</li>
+        <li>Keys come from Spotify's Mix view, so a few may be off by a step. The rules narrow the options; your ears decide the blend.</li>
+      </ul>
+    </details>
+  </section>
+
   <!-- SETTINGS -->
   <section class="view" id="view-more" hidden>
+    <button class="infolink" id="openInfo" type="button"><span><b>How Ashflow works</b><small>Every feature explained</small></span><span aria-hidden="true">›</span></button>
     <h2>Library</h2>
     <p class="note" id="libInfo"></p>
     <div class="crate-actions">
@@ -149,7 +237,7 @@
 <nav class="tabs" aria-label="Sections">
   <button data-view="wheel" class="on" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>Wheel</button>
   <button data-view="playing" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l5.5-3.5z"/></svg>Playing</button>
-  <button data-view="history" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/><path d="M12 8v4l3 2"/></svg>History</button>
+  <button data-view="history" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/><path d="M12 8v4l3 2"/></svg>Flows</button>
   <button data-view="crate" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="16" height="13" rx="2"/><path d="M8 7V4h8v3"/></svg>Crate <span class="badge" id="crateBadge" hidden></span></button>
   <button data-view="playlists" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h12M4 11h12M4 16h7"/><circle cx="18" cy="17" r="2.5"/><path d="M20.5 17V7"/></svg>Playlists</button>
   <button data-view="more" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>More</button>

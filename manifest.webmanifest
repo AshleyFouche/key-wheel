@@ -1,7 +1,7 @@
 {
-  "name": "ASH//F Key Wheel",
-  "short_name": "Key Wheel",
-  "description": "Browse the ASH//F crates by Camelot key, build sets and save crates to Spotify.",
+  "name": "Ashflow",
+  "short_name": "Ashflow",
+  "description": "Browse your crates by key, follow the flow, and turn listening sessions into Spotify playlists.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

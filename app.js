@@ -963,6 +963,15 @@
     if (v === "more") paintMore();
     if (v !== "browse" && v !== "info" && v !== "match") { try { sessionStorage.setItem("kw.view", v); } catch (e) {} }
   }
+  (function swatches() {
+    const box = $("swatches"); if (!box) return;
+    const names = ["teal", "sky blue", "blue", "indigo", "purple", "magenta", "pink", "orange-red", "amber", "lime", "green", "emerald"];
+    for (let n = 1; n <= 12; n++) {
+      const sp = document.createElement("span"); sp.style.background = col(n);
+      sp.innerHTML = `${n}A·${n}B<small>${names[n - 1]}</small>`;
+      box.appendChild(sp);
+    }
+  })();
   $("openInfo").onclick = () => { go("info"); window.scrollTo(0, 0); };
   $("infoBack").onclick = () => { go("more"); window.scrollTo(0, 0); };
   document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => { go(b.dataset.view); window.scrollTo(0, 0); });

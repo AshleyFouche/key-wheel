@@ -135,7 +135,46 @@
     <h2>How ASH//FLOW works</h2>
     <p class="note">ASH//FLOW helps you find tracks that mix well together, play them through Spotify, and turn a night of listening into a playlist.</p>
 
-    <details open><summary>Getting started</summary>
+    <details open><summary>The Camelot wheel explained</summary>
+      <p class="gp">The wheel is a map of musical keys arranged so that keys which sound good together sit next to each other. DJ Mark Davis created it as a simpler way to use the musicians' "circle of fifths", and Mixed In Key popularised it. Spotify's Mix view, Rekordbox and most DJ software use the same codes.</p>
+      <h3>The numbers: 1 to 12 around the clock</h3>
+      <p class="gp">There are 12 notes in music, so there are 12 positions. Each step clockwise moves the key up by a "fifth", the most natural-sounding move in music. Neighbouring numbers share 6 of their 7 notes, which is why they blend smoothly. Numbers wrap around: 12 sits next to 1.</p>
+      <h3>The letters: A and B</h3>
+      <ul>
+        <li><b>A = minor</b>: darker, moodier, more tension. The inner ring.</li>
+        <li><b>B = major</b>: brighter, happier, more open. The outer ring.</li>
+        <li>The same number in A and B (like 8A, A minor, and 8B, C major) uses exactly the same 7 notes, just centred differently. That's why the mood switch works.</li>
+      </ul>
+      <h3>The colours</h3>
+      <p class="gp">The colour only tells you the <b>number</b>. Each number has its own colour, arranged in rainbow order around the wheel, so neighbouring numbers have neighbouring colours. 8A and 8B share a colour. Colours that sit close together on the wheel usually mix well; colours from opposite sides usually clash.</p>
+      <div class="swatches" id="swatches"></div>
+      <p class="gp">These are ASH//FLOW's colours. Spotify's Mix view and other apps use their own colour sets, so the same key can be a different colour there. The code (like 7B) is what matters, not the colour.</p>
+      <h3>What the wheel shows you</h3>
+      <ul>
+        <li><b>White outline</b>: the key you've selected, or the key of the track you're mixing out of.</li>
+        <li><b>Bright colours</b>: keys that mix well with it, using the moves you have switched on.</li>
+        <li><b>Dark grey</b>: keys that don't fit. Mixing into these will usually clash.</li>
+        <li>The small number under each key (like <b>Am · 188</b>) is the key's name and how many of your tracks are in it.</li>
+        <li>Tap the centre to show every track again.</li>
+      </ul>
+      <h3>The moves, safest first</h3>
+      <div class="movetab">
+        <div><b>Same key</b><span>8A → 8A</span><small>All 7 notes shared. Always works.</small></div>
+        <div><b>One step</b><span>8A → 7A or 9A</span><small>6 of 7 notes shared. Smooth; +1 lifts slightly, −1 settles.</small></div>
+        <div><b>Mood switch</b><span>8A → 8B</span><small>All 7 notes shared, new centre. Minor to major brightens; major to minor darkens.</small></div>
+        <div><b>Diagonal</b><span>8A → 9B, 8B → 7A</span><small>6 of 7 notes shared, plus a mood change. Colourful but still works.</small></div>
+        <div><b>Energy boost</b><span>8A → 10A</span><small>5 of 7 notes shared. Raises the key a whole step for a noticeable lift. Use sparingly, ideally on a clean break.</small></div>
+      </div>
+      <h3>Labels you'll see in lists</h3>
+      <ul>
+        <li>Pink capitals above a track (like <b>ONE STEP</b>) tell you which move gets you there from the track you're mixing out of.</li>
+        <li><b>Key clash</b> in amber, in your queue, means that transition breaks the rules. It might still work over a drum break, but listen first.</li>
+        <li><b>?</b> means the track has no key in your library yet.</li>
+      </ul>
+      <p class="gp">The wheel narrows the options. Tempo, energy, vocals and phrasing still decide whether a blend works, so trust your ears over the colours.</p>
+    </details>
+
+    <details><summary>Getting started</summary>
       <ul>
         <li>Open the app from its home-screen icon. To install it again: open <b>ashleyfouche.github.io/key-wheel</b> in Safari, tap <b>Share → Add to Home Screen</b>.</li>
         <li>Tap <b>Connect Spotify</b> (top right) and approve. Playback needs Spotify Premium.</li>

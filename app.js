@@ -510,7 +510,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.11";
+  const APP_VERSION = "1.12";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1347,13 +1347,20 @@
     box.innerHTML = html;
     box.querySelector(".hx").onclick = () => { headsDismissed.add(np.id); paintHeads(); };
     const tog = box.querySelector("#autoTog");
-    if (tog) tog.onchange = () => { autoPick = tog.checked; ls.set("kw.autopick", autoPick); toast(autoPick ? "Auto-pick on — the top suggestion queues itself if you don't choose" : "Auto-pick off"); headsKey = ""; paintHeads(); };
+    if (tog) tog.onchange = () => setAuto(tog.checked);
     box.querySelectorAll(".hq").forEach(b => b.onclick = () => {
       const t = byId.get(b.dataset.id); if (!t) return;
       if (b.textContent === "Play next") { appQ.unshift(t.id); saveQ(); pump(); toast("Up next: " + t.title); } else enqueue(t);
       headsKey = ""; paintHeads();
     });
   }
+  function setAuto(on) {
+    autoPick = on; ls.set("kw.autopick", on); $("autoTog2").checked = on;
+    toast(on ? "Auto-pick on — if nothing is queued, the top suggestion queues itself 8 seconds before the end" : "Auto-pick off");
+    headsKey = ""; paintHeads();
+  }
+  $("autoTog2").checked = autoPick;
+  $("autoTog2").onchange = () => setAuto($("autoTog2").checked);
   setInterval(paintHeads, 1000);
 
   // ---------- Suggested next on the Playing tab ----------

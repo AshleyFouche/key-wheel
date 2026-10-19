@@ -470,3 +470,4 @@ body.has-np.has-heads{padding-bottom:calc(var(--tabs-h) + env(safe-area-inset-bo
 .hautoline{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted);padding:0 2px}
 .htog{display:flex;align-items:center;gap:6px;white-space:nowrap}
 .htog input{width:16px;height:16px;accent-color:var(--accent);margin:0}
+.qhead .htog{font-size:13px;color:var(--muted)}

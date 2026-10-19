@@ -625,7 +625,7 @@
       const keys = recs.filter(r => r.key).map(r => `<span class="k" style="background:${col(parseInt(r.key))}">${r.key}</span>`).join("");
       box.innerHTML = `<div class="sess-h"><b>${i === 0 && Date.now() - ses.last < GAP ? "Tonight · " : ""}${dayFmt.format(ses.start)}</b><span>${timeFmt.format(ses.start)} – ${timeFmt.format(ses.last)} · ${recs.length} tracks</span></div>
         <div class="sess-keys">${keys}</div>
-        <div class="acts"><button class="btn" type="button" data-a="crate">Use as crate</button><button class="btn ghost" type="button" data-a="toggle">${openSess.has(key) ? "Hide tracks" : "Show tracks"}</button><button class="btn ghost danger" type="button" data-a="del">Delete</button></div>`;
+        <div class="acts"><button class="btn" type="button" data-a="crate">Use as crate</button><button class="btn ghost" type="button" data-a="addcrate">Add to crate</button><button class="btn ghost" type="button" data-a="toggle">${openSess.has(key) ? "Hide tracks" : "Show tracks"}</button><button class="btn ghost danger" type="button" data-a="del">Delete</button></div>`;
       if (openSess.has(key)) {
         const list = document.createElement("div"); list.className = "list";
         recs.forEach((r, j) => {
@@ -641,6 +641,11 @@
         crate = [...new Set(ses.plays.map(e => e.id))]; saveCrate();
         $("crateName").value = "ASH//F Session · " + dayFmt.format(ses.start) + " " + new Date(ses.start).getFullYear();
         go("crate"); window.scrollTo(0, 0); toast(`Crate set to this session (${crate.length} tracks)`);
+      };
+      box.querySelector('[data-a="addcrate"]').onclick = () => {
+        let n = 0; ses.plays.forEach(e => { if (!crate.includes(e.id)) { crate.push(e.id); n++; } });
+        saveCrate();
+        toast(n ? `Added ${n} ${n === 1 ? "track" : "tracks"} to your crate (${crate.length} now)` : "All of these are already in your crate");
       };
       const del = box.querySelector('[data-a="del"]');
       del.onclick = () => {

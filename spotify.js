@@ -174,6 +174,11 @@
   const q = id => id ? "?device_id=" + encodeURIComponent(id) : "";
   const play = trackId => withDevice(dev => api("/me/player/play" + q(dev), { method: "PUT", body: JSON.stringify({ uris: ["spotify:track:" + trackId] }) }));
   const queue = trackId => withDevice(dev => api("/me/player/queue?uri=" + encodeURIComponent("spotify:track:" + trackId) + (dev ? "&device_id=" + encodeURIComponent(dev) : ""), { method: "POST" }));
+  // Play a whole album in order (Spotify carries on through it), optionally starting at one track.
+  const playContext = (contextUri, startTrackId) => withDevice(dev => api("/me/player/play" + q(dev), { method: "PUT", body: JSON.stringify(startTrackId ? { context_uri: contextUri, offset: { uri: "spotify:track:" + startTrackId } } : { context_uri: contextUri }) }));
+  // Play a list of tracks (up to 100) one after another.
+  const playList = trackIds => withDevice(dev => api("/me/player/play" + q(dev), { method: "PUT", body: JSON.stringify({ uris: trackIds.slice(0, 100).map(id => "spotify:track:" + id) }) }));
+  const setShuffle = on => api("/me/player/shuffle?state=" + (on ? "true" : "false"), { method: "PUT" });
   const pause = () => api("/me/player/pause", { method: "PUT" });
   const resume = () => withDevice(dev => api("/me/player/play" + q(dev), { method: "PUT" }));
   async function nowPlaying() {
@@ -282,7 +287,7 @@
   window.Spotify = {
     searchAll, searchTracks, moveInPlaylist, getTrack, getAlbum, getArtist, transfer, setVolume,
     recentlyPlayed, playerState, upNext, seek, next, previous,
-    canPlay, play, queue, pause, resume, nowPlaying, devices,
+    canPlay, play, playContext, playList, setShuffle, queue, pause, resume, nowPlaying, devices,
     login, handleRedirect, connected: () => !!store.get(), logout: () => store.clear(),
     me, myPlaylists, playlistTracks, createPlaylist, addTracks, configured: () => !!window.CONFIG.spotifyClientId
   };

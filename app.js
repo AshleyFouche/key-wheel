@@ -511,7 +511,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.15";
+  const APP_VERSION = "1.16";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1072,6 +1072,36 @@
     sh.hidden = false; $("sheetBg").hidden = false;
     sh.querySelectorAll("[data-id]").forEach(b => b.onclick = () => { closeMenu(); openArtist(b.dataset.id, b.textContent.trim()); });
   }
+  // ---------- play or shuffle a whole album / artist ----------
+  function shuffled(arr) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+  async function playMany({ album, ids, name, shuffle }) {
+    if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return; }
+    if (!Spotify.canPlay()) { showReconnect(); return; }
+    try {
+      if (album) await Spotify.playContext("spotify:album:" + album);
+      else { if (!ids.length) { toast("No tracks to play"); return; } await Spotify.playList(ids); }
+      // We shuffle in the app, so keep Spotify's own shuffle off; that also keeps "Play" in order.
+      Spotify.setShuffle(false).catch(() => {});
+      toast((shuffle ? "Shuffling: " : "Playing: ") + name + (ids ? ` · ${Math.min(ids.length, 100)} tracks` : ""));
+      setTimeout(pollNow, 900);
+    } catch (e) { playError(e); }
+  }
+  async function playArtist(a, mine, shuffle) {
+    toast(`Gathering ${a.name}'s tracks…`);
+    const lower = a.name.toLowerCase(), seen = new Set(), ids = [];
+    const add = (id, title, artist) => {
+      const k = (title || "").toLowerCase().replace(/\s*[-(\[].*$/, "").trim();
+      if (!id || seen.has(id) || (k && seen.has("t:" + k))) return;
+      if (artist && !artist.toLowerCase().includes(lower)) return;
+      seen.add(id); if (k) seen.add("t:" + k); ids.push(id);
+    };
+    const rel = (a.albums || []).slice(0, 15);
+    const albums = await Promise.all(rel.map(al => Spotify.getAlbum(al.id).catch(() => null)));
+    albums.forEach(al => al && al.tracks.forEach(t => add(t.id, t.title, t.artist)));
+    mine.forEach(t => add(t.id, t.title, t.artist));
+    if (!ids.length) { toast("Couldn't get any tracks for this artist from Spotify"); return; }
+    playMany({ ids: shuffle ? shuffled(ids) : ids, name: a.name, shuffle });
+  }
   async function renderBrowse() {
     const w = $("browseWrap"), page = browseStack[browseStack.length - 1];
     w.innerHTML = '<p class="note">Loading…</p>';
@@ -1083,11 +1113,13 @@
         w.innerHTML = `<div class="bhead"><div class="bimg" style="background-image:url('${esc(a.image)}')"></div><div><div class="bt">${esc(a.name)}</div>
           <div class="bs">${a.artists.map(x => `<a href="#" data-artist="${esc(x.id)}" style="color:inherit">${esc(x.name)}</a>`).join(", ")}${a.year ? " · " + a.year : ""} · ${a.total && a.total > a.tracks.length ? `showing ${a.tracks.length} of ${a.total} tracks` : a.tracks.length + " tracks"}</div>
           <div class="bs">${known} with a key in your library</div></div></div>
-          <div class="crate-actions"><button class="btn ghost" type="button" id="bAllQ">Queue all with keys</button><a class="btn ghost" href="https://open.spotify.com/album/${esc(a.id)}">Open in Spotify</a></div>`;
+          <div class="crate-actions"><button class="btn" type="button" id="bPlay">${IC.play}Play</button><button class="btn" type="button" id="bShuf">${IC.shuffle}Shuffle</button><button class="btn ghost" type="button" id="bAllQ">Queue all with keys</button><a class="btn ghost" href="https://open.spotify.com/album/${esc(a.id)}">Open in Spotify</a></div>`;
         w.querySelectorAll("[data-artist]").forEach(el => el.onclick = e => { e.preventDefault(); openArtist(el.dataset.artist); });
         const list = document.createElement("div"); list.className = "list";
         a.tracks.forEach(t => list.appendChild(rowEl(recOf(t.id, t), null, setAnchor)));
         w.appendChild(list);
+        $("bPlay").onclick = () => playMany({ album: a.id, name: a.name });
+        $("bShuf").onclick = () => playMany({ ids: shuffled(a.tracks.map(t => t.id)), name: a.name, shuffle: true });
         $("bAllQ").onclick = () => { const ks = a.tracks.map(t => byId.get(t.id)).filter(r => r && r.key); if (!ks.length) { toast("None of these have a key yet"); return; } ks.forEach(r => appQ.push(r.id)); saveQ(); pump(); toast(`Queued ${ks.length} tracks`); };
       } else {
         let a = page.data;
@@ -1096,7 +1128,9 @@
         const mine = T.filter(t => t.artist.toLowerCase().split(/,\s*/).includes(name) || t.artist.toLowerCase() === name);
         w.innerHTML = `<div class="bhead artist"><div class="bimg" style="background-image:url('${esc(a.image)}')"></div><div><div class="bt">${esc(a.name)}</div>
           <div class="bs">${a.genres.slice(0, 3).map(esc).join(" · ")}</div><div class="bs">${mine.length} in your library</div></div></div>
-          <div class="crate-actions"><a class="btn ghost" href="https://open.spotify.com/artist/${esc(a.id)}">Open in Spotify</a></div>`;
+          <div class="crate-actions"><button class="btn" type="button" id="bPlay">${IC.play}Play all</button><button class="btn" type="button" id="bShuf">${IC.shuffle}Shuffle</button><a class="btn ghost" href="https://open.spotify.com/artist/${esc(a.id)}">Open in Spotify</a></div>`;
+        $("bPlay").onclick = () => playArtist(a, mine, false);
+        $("bShuf").onclick = () => playArtist(a, mine, true);
         if (mine.length) {
           const h = document.createElement("h2"); h.textContent = "In your library"; w.appendChild(h);
           const list = document.createElement("div"); list.className = "list";

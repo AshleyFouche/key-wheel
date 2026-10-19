@@ -2,6 +2,7 @@
 (function () {
   const s = (body, fill) => `<svg class="ico${fill ? " fill" : ""}" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
   window.IC = {
+    shuffle: s('<path d="M4 7h3.5c1.6 0 3 .8 3.9 2.1l2.2 3.3c.9 1.3 2.3 2.1 3.9 2.1H20"/><path d="M4 17h3.5c1.2 0 2.3-.5 3.1-1.3M13.4 8.3c.8-.8 1.9-1.3 3.1-1.3H20"/><path d="M17.5 4.5 20 7l-2.5 2.5M17.5 12 20 14.5 17.5 17"/>'),
     play: s('<path d="M8 5.6v12.8c0 .8.9 1.3 1.6.9l10-6.4c.6-.4.6-1.4 0-1.8l-10-6.4C8.9 4.3 8 4.8 8 5.6z"/>', 1),
     pause: s('<rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/>', 1),
     prev: s('<rect x="4.5" y="5" width="2.6" height="14" rx="1.1"/><path d="M19 6.3v11.4c0 .8-.9 1.3-1.6.8L9.6 13c-.7-.4-.7-1.5 0-2l7.8-5.5c.7-.5 1.6 0 1.6.8z"/>', 1),

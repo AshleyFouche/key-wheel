@@ -84,8 +84,9 @@
   // Recent player commands and Spotify's replies, for the Connection check on the More tab.
   const LOG = [];
   const logIt = (opts, path, status, msg) => {
-    if (!/\/me\/player/.test(path)) return;
-    if ((opts.method || "GET") === "GET" && status < 300 && !/devices/.test(path)) return;   // skip routine polling
+    const m = opts.method || "GET";
+    if (!/\/me\/player/.test(path) && !(m !== "GET" && /\/playlists\/|\/me\/library/.test(path))) return;
+    if (m === "GET" && status < 300 && !/devices/.test(path)) return;   // skip routine polling
     LOG.push({ at: Date.now(), m: opts.method || "GET", p: path.replace(API, "").replace(/uris=[^&]+/, "uris=…"), s: status, msg: msg || "" });
     if (LOG.length > 25) LOG.shift();
   };

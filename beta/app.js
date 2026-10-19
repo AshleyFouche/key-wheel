@@ -591,7 +591,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.6";
+  const APP_VERSION = "2.7";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -671,6 +671,14 @@
     let last = ""; try { last = localStorage.getItem("kwb.lastDevice") || ""; } catch (e) {}
     lines.push("Live set: " + (liveOn ? "on" : "off") + (live.pl ? " · playlist …" + live.pl.slice(-6) + " · " + live.items.length + " tracks, playing #" + (live.cur + 1) : " · not started yet"));
     lines.push("Last device ASH//FLOW saw playing: " + (last ? "id …" + last.slice(-6) : "none yet"));
+    if (isLive()) {
+      try {
+        const up = (await Spotify.upNext()).filter(t => t.id !== np.id).slice(0, 5).map(t => t.title);
+        lines.push("SPOTIFY UP NEXT: " + (up.join(" · ") || "nothing"));
+        lines.push("APP UP NEXT:     " + (appQ.slice(0, 5).map(id => recOf(id, qMeta.get(id)).title).join(" · ") || "nothing"));
+      } catch (e) {}
+    }
+    lines.push("Other open copy of ASH//FLOW also controls Spotify: if stable is open too, close it while testing.");
     const log = Spotify.log();
     lines.push("RECENT COMMANDS (newest last): " + (log.length ? "" : "none yet"));
     log.forEach(l => lines.push(`  ${time(l.at)}  ${l.m} ${l.p}  →  ${l.s}${l.msg ? " " + l.msg : ""}`));
@@ -1186,22 +1194,38 @@
     }
     return false;
   }
+  // Re-read the playlist from Spotify and confirm where it's playing, using Spotify's own "up next" to pick the
+  // right spot if the playing song appears more than once. Stops the app inserting in the wrong place.
+  let liveSyncedAt = 0;
+  async function liveResync(force) {
+    if (!isLive() || (!force && Date.now() - liveSyncedAt < 3000)) return;
+    const ids = (await Spotify.playlistTracks(live.pl)).map(t => t.id);
+    let up = []; try { up = (await Spotify.upNext()).map(t => t.id).filter(x => x !== np.id); } catch (e) {}
+    const hits = []; ids.forEach((x, i) => { if (x === np.id) hits.push(i); });
+    if (!hits.length) return;                       // playing something outside the set
+    let cur = hits.length === 1 ? hits[0] : (hits.find(i => up.length && ids[i + 1] === up[0]) ?? hits[hits.length - 1]);
+    live.items = ids; live.cur = cur; saveLive(); setTail(); liveSyncedAt = Date.now();
+  }
   async function liveInsertNext(id) {
+    await liveResync(true);
     const pos = live.cur + 1;
     await Spotify.liveAdd(live.pl, [id], pos);
     live.items.splice(pos, 0, id); saveLive(); setTail();
   }
   async function liveAppend(ids) {
+    await liveResync();
     await Spotify.liveAdd(live.pl, ids);
     live.items.push(...ids); saveLive(); setTail();
   }
   // Take a track out of "up next": move it to just before the playing track (into the played part).
   async function liveRemoveAt(qi) {
+    await liveResync();
     const pos = live.cur + 1 + qi, id = live.items[pos]; if (!id) return;
     await Spotify.liveMove(live.pl, pos, live.cur);
     live.items.splice(pos, 1); live.items.splice(live.cur, 0, id); live.cur += 1; saveLive(); setTail();
   }
   async function liveReorder(newTail) {
+    await liveResync();
     const old = live.items.slice(live.cur + 1);
     let i = 0; while (i < old.length && old[i] === newTail[i]) i++;
     if (i === old.length) return;

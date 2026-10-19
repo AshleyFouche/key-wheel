@@ -175,7 +175,9 @@ body.has-np .toast{bottom:calc(var(--tabs-h) + env(safe-area-inset-bottom,0px) +
 .pv-ctrl button{background:none;border:0;font-size:26px;color:var(--ink);cursor:pointer;width:52px;height:52px}
 .pv-ctrl .big{width:72px;height:72px;border-radius:50%;background:var(--ink);color:var(--bg);font-size:24px}
 #pvMix{justify-self:center}
-body.on-playing .np{display:none}
+body.on-playing:not(.has-heads) .np{display:none}
+body.on-playing .np>:not(#npHeads){display:none}
+body.on-playing .np .np-heads{border-bottom:0;padding-bottom:0}
 body.on-playing.has-np{padding-bottom:calc(var(--tabs-h) + env(safe-area-inset-bottom,0px) + 16px)}
 
 /* History */
@@ -471,3 +473,5 @@ body.has-np.has-heads{padding-bottom:calc(var(--tabs-h) + env(safe-area-inset-bo
 .htog{display:flex;align-items:center;gap:6px;white-space:nowrap}
 .htog input{width:16px;height:16px;accent-color:var(--accent);margin:0}
 .qhead .htog{font-size:13px;color:var(--muted)}
+body.on-playing.has-np.has-heads{padding-bottom:calc(var(--tabs-h) + env(safe-area-inset-bottom,0px) + 240px)}
+body.on-playing .np{padding-top:10px}

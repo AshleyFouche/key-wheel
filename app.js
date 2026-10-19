@@ -155,7 +155,7 @@
     if (state.anchor) {
       const t = state.anchor;
       a.innerHTML = `<div class="ahead"><span class="eyebrow">Mixing out of</span><button class="link" type="button" id="all">All tracks</button></div><span class="t">${esc(t.title)}</span>
-        <span class="m">${esc(t.artist)} · ${t.key} ${NAMES[t.key]} · ${t.tempo || "–"} tempo</span>${whereHtml(t)}${noteHtml(t.id)}
+        <span class="m">${esc(t.artist)} · ${t.key} ${NAMES[t.key]} · ${t.tempo || "–"} BPM</span>${whereHtml(t)}${noteHtml(t.id)}
         <span class="acts"><button class="btn ghost" type="button" id="aAdd">${crate.includes(t.id) ? "In crate ✓" : "+ Crate"}</button>${state.trail.length > 1 ? '<button class="btn ghost" type="button" id="back1">‹ Back one</button>' : ""}<button class="btn ghost" type="button" id="clr">${state.trail.length > 1 ? "Clear thread" : "Clear track"}</button></span>`;
       $("clr").onclick = () => { state.trail = []; state.anchor = null; $("tmin").value = ""; $("tmax").value = ""; saveState(); render(); };
       $("aAdd").onclick = () => { toggleCrate(t.id); render(); };
@@ -226,7 +226,7 @@
     const r = document.createElement("div"); r.className = "row";
     const m = rel && rel[t.key] && state.on[rel[t.key]] ? MOVE_NAME[rel[t.key]] : "";
     const pc = from ? pairCount(from.id, t.id) : 0;
-    const dTxt = m && from && from.tempo && t.tempo ? " · " + (t.tempo === from.tempo ? "same tempo" : (t.tempo > from.tempo ? "+" : "") + (t.tempo - from.tempo)) : "";
+    const dTxt = m && from && from.tempo && t.tempo ? " · " + (t.tempo === from.tempo ? "same BPM" : (t.tempo > from.tempo ? "+" : "") + (t.tempo - from.tempo)) : "";
     const relLine = (m || pc) ? `<div class="rel">${m}${dTxt}${pc ? `<span class="mem">${m ? " · " : ""}★ played after this${pc > 1 ? " " + pc + "×" : ""}</span>` : ""}</div>` : "";
     const keyHtml = t.key ? `<span class="key" style="background:${col(parseInt(t.key))}">${t.key}</span>` : `<span class="key none">?</span>`;
     r.innerHTML = `${keyHtml}<span class="bpm">${t.tempo || "–"}</span>
@@ -253,7 +253,7 @@
     const offMoves = keyed ? MOVES.filter(m => !state.on[m.id]) : [];
     const onlyNames = MOVES.filter(m => state.on[m.id]).map(m => m.name).join(" + ");
     $("count").innerHTML = esc(`${rows.length.toLocaleString()} ${keyed ? "tracks in compatible keys" : (qq ? "tracks across your whole library" : "tracks, all keys")}` +
-      (keyed && state.anchor && state.dir !== "any" ? ` · ${dd.sym} ${dd.name} order: ${{ build: "tempo up, boosts, minor to major first", hold: "same tempo, same or next-door key first", cool: "tempo down, major to minor first" }[state.dir]}` : "")) +
+      (keyed && state.anchor && state.dir !== "any" ? ` · ${dd.sym} ${dd.name} order: ${{ build: "BPM up, boosts, minor to major first", hold: "same BPM, same or next-door key first", cool: "BPM down, major to minor first" }[state.dir]}` : "")) +
       (offMoves.length ? `<div class="onlyline">Showing only <b>${esc(onlyNames)}</b> <button class="link" type="button" data-fix="moves">Show all moves</button></div>` : "");
     const list = $("list"); list.innerHTML = "";
     rows.slice(0, state.shown).forEach(t => list.appendChild(rowEl(t, rel, setAnchor, state.anchor)));
@@ -261,16 +261,16 @@
     if (!rows.length) {
       const lo = parseFloat(tmin.value), hi = parseFloat(tmax.value), fixes = [];
       if (offMoves.length) fixes.push(`<button class="btn" type="button" data-fix="moves">Show all moves</button>`);
-      if (lo || hi) fixes.push(`<button class="btn ghost" type="button" data-fix="tempo">Widen tempo</button>`);
+      if (lo || hi) fixes.push(`<button class="btn ghost" type="button" data-fix="BPM">Widen BPM</button>`);
       if (sel.value) fixes.push(`<button class="btn ghost" type="button" data-fix="crate">All crates</button>`);
-      list.innerHTML = `<div class="empty"><p class="note">Nothing matches${offMoves.length ? ` — only <b>${esc(onlyNames)}</b> is switched on` : ""}${lo || hi ? `${offMoves.length ? "," : " —"} tempo ${lo || "any"} to ${hi || "any"}` : ""}${sel.value ? ", one crate only" : ""}.</p><div class="acts">${fixes.join("")}</div></div>`;
+      list.innerHTML = `<div class="empty"><p class="note">Nothing matches${offMoves.length ? ` — only <b>${esc(onlyNames)}</b> is switched on` : ""}${lo || hi ? `${offMoves.length ? "," : " —"} BPM ${lo || "any"} to ${hi || "any"}` : ""}${sel.value ? ", one crate only" : ""}.</p><div class="acts">${fixes.join("")}</div></div>`;
     }
   }
   document.addEventListener("click", e => {
     const b = e.target.closest("[data-fix]"); if (!b) return;
     const f = b.dataset.fix;
     if (f === "moves") state.on = { ...ALL_ON };
-    if (f === "tempo") { const lo = parseFloat(tmin.value), hi = parseFloat(tmax.value); if (lo) tmin.value = Math.max(0, lo - 6); if (hi) tmax.value = hi + 6; }
+    if (f === "BPM") { const lo = parseFloat(tmin.value), hi = parseFloat(tmax.value); if (lo) tmin.value = Math.max(0, lo - 6); if (hi) tmax.value = hi + 6; }
     if (f === "crate") sel.value = "";
     state.shown = 60; saveState(); render();
   });
@@ -291,12 +291,12 @@
 
   // ---------- set direction ----------
   const DIRS = [
-    { id: "any", name: "Any", tip: "No lean — closest key and tempo first" },
-    { id: "build", name: "Build", sym: "↑", tip: "Lifting the energy — a few tempo up, energy boosts, minor to major" },
-    { id: "hold", name: "Hold", sym: "→", tip: "Keeping it steady — near-same tempo, same or next-door keys" },
-    { id: "cool", name: "Cool", sym: "↓", tip: "Bringing it down — tempo down, major to minor, no boosts" }
+    { id: "any", name: "Any", tip: "No lean — closest key and BPM first" },
+    { id: "build", name: "Build", sym: "↑", tip: "Lifting the energy — a few BPM up, energy boosts, minor to major" },
+    { id: "hold", name: "Hold", sym: "→", tip: "Keeping it steady — near-same BPM, same or next-door keys" },
+    { id: "cool", name: "Cool", sym: "↓", tip: "Bringing it down — BPM down, major to minor, no boosts" }
   ];
-  // Tempo range shown around the selected track, per direction.
+  // BPM range shown around the selected track, per direction.
   const tempoWindow = t => [t.tempo - 6, t.tempo + 6];   // direction re-orders; it never hides tracks
   function paintDir() {
     const box = $("dir"); if (!box) return;
@@ -318,7 +318,7 @@
   function paintCrate() {
     const list = $("crateList"); list.innerHTML = "";
     const recs = crate.map(id => byId.get(id)).filter(Boolean);
-    $("crateCount").textContent = recs.length ? `${recs.length} tracks · tempo ${Math.min(...recs.map(r => r.tempo || 999))}–${Math.max(...recs.map(r => r.tempo || 0))}` : "Empty for now.";
+    $("crateCount").textContent = recs.length ? `${recs.length} tracks · BPM ${Math.min(...recs.map(r => r.tempo || 999))}–${Math.max(...recs.map(r => r.tempo || 0))}` : "Empty for now.";
     recs.forEach(t => {
       const r = rowEl(t, null, setAnchor);
       r.classList.add("crow"); r.dataset.id = t.id;
@@ -510,7 +510,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "1.12";
+  const APP_VERSION = "1.13";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -609,7 +609,7 @@
       let id = null, m = (parts[0] || "").match(/track[/:]([A-Za-z0-9]{22})/);
       if (m) id = m[1]; else if (/^[A-Za-z0-9]{22}$/.test(parts[0] || "")) id = parts[0];
       if (id) { out.push({ raw: line, id, key: normKey(parts[1]), tempo: Math.round(parseFloat(parts[2])) || 0, title: parts[3] || "", artist: parts.slice(4).join(", ") }); return; }
-      // key | tempo | title | artist | length   (length optional)
+      // key | BPM | title | artist | length   (length optional)
       let len = 0; if (parts.length >= 5 && parseLen(parts[parts.length - 1])) len = parseLen(parts.pop());
       out.push({ raw: line, key: normKey(parts[0]), tempo: Math.round(parseFloat(parts[1])) || 0, title: parts[2] || "", artist: parts.slice(3).join(", "), len });
     });
@@ -793,7 +793,7 @@
     $("pvArt").style.backgroundImage = np.artLarge || np.art ? `url("${np.artLarge || np.art}")` : "";
     $("pvTitle").textContent = np.title; $("pvArtist").textContent = np.artist;
     $("pvKey").innerHTML = rec && rec.key
-      ? `<span class="k" style="background:${col(parseInt(rec.key))}">${rec.key}</span>${NAMES[rec.key]}${rec.tempo ? " · " + rec.tempo + " tempo" : ""}`
+      ? `<span class="k" style="background:${col(parseInt(rec.key))}">${rec.key}</span>${NAMES[rec.key]}${rec.tempo ? " · " + rec.tempo + " BPM" : ""}`
       : "No key yet in your library";
     $("pvWhere").innerHTML = rec ? whereHtml(rec) + noteHtml(rec.id) : "";
     $("pvDev").textContent = "";
@@ -1014,7 +1014,7 @@
   function openMenu(t) {
     const sh = $("sheet");
     const inCrate = crate.includes(t.id);
-    sh.innerHTML = `<div class="grab"></div><div class="sh-t">${esc(t.title)}</div><div class="sh-a">${esc(t.artist)}${t.key ? ` · ${t.key} ${NAMES[t.key]}` : ""}${t.tempo ? ` · ${t.tempo} tempo` : ""}</div>${whereHtml(byId.get(t.id) || t)}${noteHtml(t.id)}
+    sh.innerHTML = `<div class="grab"></div><div class="sh-t">${esc(t.title)}</div><div class="sh-a">${esc(t.artist)}${t.key ? ` · ${t.key} ${NAMES[t.key]}` : ""}${t.tempo ? ` · ${t.tempo} BPM` : ""}</div>${whereHtml(byId.get(t.id) || t)}${noteHtml(t.id)}
       <button class="item" data-a="play" type="button"><span>${IC.play}</span>Play now</button>
       <button class="item" data-a="queue" type="button"><span>${IC.queue}</span>Add to queue</button>
       <button class="item" data-a="crate" type="button"><span>${IC.crate}</span>${inCrate ? "Remove from crate" : "Add to crate"}</button>
@@ -1150,7 +1150,7 @@
   const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" });
   const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
   const openSess = new Set();
-  // Tempo across a flow: one line, each dot coloured by its key. Tap a dot for the track.
+  // BPM across a flow: one line, each dot coloured by its key. Tap a dot for the track.
   function flowChart(recs) {
     const pts = recs.map((r, i) => ({ r, i })).filter(p => p.r.tempo);
     if (pts.length < 2) return "";
@@ -1162,9 +1162,9 @@
     const path = pts.map((p, j) => (j ? "L" : "M") + x(p.i).toFixed(1) + " " + y(p.r.tempo).toFixed(1)).join(" ");
     const grid = [hi, Math.round((hi + lo) / 2), lo].map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="g"/><text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end">${v}</text>`).join("");
     const dots = pts.map(p => `<g class="pt" data-i="${p.i}"><circle cx="${x(p.i)}" cy="${y(p.r.tempo)}" r="14" fill="transparent"/><circle cx="${x(p.i)}" cy="${y(p.r.tempo)}" r="4.5" class="d" style="fill:${p.r.key ? col(parseInt(p.r.key)) : "var(--muted)"}"/></g>`).join("");
-    return `<div class="fchart" data-tips="${esc(JSON.stringify(recs.map(r => r.title + " · " + (r.key || "?") + " · " + (r.tempo || "–") + " tempo")))}">
-      <div class="fc-t">Tempo through the flow</div>
-      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Tempo from ${pts[0].r.tempo} to ${pts[pts.length - 1].r.tempo} across ${recs.length} tracks">${grid}<path d="${path}" class="ln"/>${dots}<text x="${L}" y="${H - 2}">start</text><text x="${W - R}" y="${H - 2}" text-anchor="end">end</text></svg>
+    return `<div class="fchart" data-tips="${esc(JSON.stringify(recs.map(r => r.title + " · " + (r.key || "?") + " · " + (r.tempo || "–") + " BPM")))}">
+      <div class="fc-t">BPM through the flow</div>
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="BPM from ${pts[0].r.tempo} to ${pts[pts.length - 1].r.tempo} across ${recs.length} tracks">${grid}<path d="${path}" class="ln"/>${dots}<text x="${L}" y="${H - 2}">start</text><text x="${W - R}" y="${H - 2}" text-anchor="end">end</text></svg>
       <div class="fc-tip" hidden></div></div>`;
   }
   document.addEventListener("click", e => {
@@ -1296,7 +1296,7 @@
     if ($("noteDel")) $("noteDel").onclick = () => { delete notes[t.id]; done("Note removed"); };
     $("noteCancel").onclick = () => closeMenu();
   }
-  const tempoDelta = (from, t) => { const d = from.tempo && t.tempo ? t.tempo - from.tempo : 0; return d ? (d > 0 ? "+" : "") + d + " tempo" : "same tempo"; };
+  const tempoDelta = (from, t) => { const d = from.tempo && t.tempo ? t.tempo - from.tempo : 0; return d ? (d > 0 ? "+" : "") + d + " BPM" : "same BPM"; };
 
   // ---------- heads-up before the track ends ----------
   const headsDismissed = new Set(), autoDone = new Set();
@@ -1372,7 +1372,7 @@
     const sug = suggest(cur, 6);
     if (!sug.length) { box.innerHTML = '<p class="note">No close matches in your library.</p>'; return; }
     const d = DIRS.find(d => d.id === state.dir);
-    $("sugNote").textContent = (state.dir === "any" ? "Best matches from what's playing, by key and tempo." : `Leaning ${d.name.toLowerCase()} ${d.sym} — change it on the Wheel tab.`) + " Swipe right to queue.";
+    $("sugNote").textContent = (state.dir === "any" ? "Best matches from what's playing, by key and BPM." : `Leaning ${d.name.toLowerCase()} ${d.sym} — change it on the Wheel tab.`) + " Swipe right to queue.";
     sug.forEach(x => {
       const r = rowEl(x.t, null, setAnchor, cur);
       let lab = r.querySelector(".tt .rel");

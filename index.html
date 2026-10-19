@@ -33,7 +33,7 @@
     <div class="filters">
       <input id="q" type="search" placeholder="Search any track or artist" aria-label="Search any track or artist" autocomplete="off">
       <div class="frow">
-        <label>Tempo <input id="tmin" type="number" inputmode="numeric" aria-label="Lowest tempo"> to <input id="tmax" type="number" inputmode="numeric" aria-label="Highest tempo"></label>
+        <label>BPM <input id="tmin" type="number" inputmode="numeric" aria-label="Lowest BPM"> to <input id="tmax" type="number" inputmode="numeric" aria-label="Highest BPM"></label>
         <select id="crate" aria-label="Crate"><option value="">All crates</option></select>
       </div>
     </div>
@@ -70,7 +70,7 @@
       <button class="devbtn" id="pvDevice" type="button"><span class="dico" id="pvDevIco"></span><span><small>Playing on</small><b id="pvDevName">—</b></span><span class="chev" id="pvChev"></span></button>
       <button class="btn" id="pvMix" type="button">Mix out of this</button>
       <div class="qhead"><h2>Suggested next</h2><label class="htog" title="If nothing is queued, the top suggestion queues itself 8 seconds before the track ends"><input type="checkbox" id="autoTog2"> Auto-pick</label></div>
-      <p class="note" id="sugNote">Best matches from what's playing, by key and tempo. Swipe right to queue.</p>
+      <p class="note" id="sugNote">Best matches from what's playing, by key and BPM. Swipe right to queue.</p>
       <div class="list" id="pvSuggest"></div>
       <div class="qhead"><h2>Up next</h2><button class="btn ghost danger" id="qClear" type="button" hidden>Clear queue</button></div>
       <p class="note">Swipe right on any track to queue it. Drag <b>≡</b> to reorder, tap <b>✕</b> to remove. Each label shows how the track mixes from the one before it.</p>
@@ -128,7 +128,7 @@
         <select id="existingPl"><option value="">Loading your playlists…</option></select>
         <p class="note">Tracks already in that playlist are skipped, so nothing is doubled up.</p>
       </div>
-      <label class="check"><input id="crateOrder" type="checkbox"> Sort by tempo before saving</label>
+      <label class="check"><input id="crateOrder" type="checkbox"> Sort by BPM before saving</label>
       <button class="btn" id="saveCrate" type="button">Save to Spotify</button>
       <p class="status" id="saveStatus" role="status"></p>
     </div>
@@ -192,8 +192,8 @@
         <li><b>✎</b> next to a title means you've left yourself a note on it. Add one from the <b>⋯</b> menu.</li>
       </ul>
       <h3>Direction</h3>
-      <p>The <b>Direction</b> switch under the wheel tells the app where you want the night to go. <b>Build</b> favours a few tempo up, energy boosts and minor to major. <b>Hold</b> keeps tempo and key close. <b>Cool</b> favours tempo down and major to minor, and avoids boosts. <b>Any</b> just ranks by closest key and tempo. It only changes the <b>order</b> of the wheel list and the suggestions on the Playing tab, never how many tracks you see. It works from the track you're mixing out of, and each row shows the tempo change from it (like <b>+3</b>). Each flow on the Flows tab has a tempo chart so you can see the shape of the night afterwards.</p>
-      <p class="gp">The wheel narrows the options. Tempo, energy, vocals and phrasing still decide whether a blend works, so trust your ears over the colours.</p>
+      <p>The <b>Direction</b> switch under the wheel tells the app where you want the night to go. <b>Build</b> favours a few BPM up, energy boosts and minor to major. <b>Hold</b> keeps BPM and key close. <b>Cool</b> favours BPM down and major to minor, and avoids boosts. <b>Any</b> just ranks by closest key and BPM. It only changes the <b>order</b> of the wheel list and the suggestions on the Playing tab, never how many tracks you see. It works from the track you're mixing out of, and each row shows the BPM change from it (like <b>+3</b>). Each flow on the Flows tab has a BPM chart so you can see the shape of the night afterwards.</p>
+      <p class="gp">The wheel narrows the options. BPM, energy, vocals and phrasing still decide whether a blend works, so trust your ears over the colours.</p>
     </details>
 
     <details><summary>Getting started</summary>
@@ -216,7 +216,7 @@
 
     <details><summary>Your thread</summary>
       <ul>
-        <li>Tap a track's name to mix out of it. The wheel jumps to its key, the tempo filter sets to 6 either side, and the list shows what fits.</li>
+        <li>Tap a track's name to mix out of it. The wheel jumps to its key, the BPM filter sets to 6 either side, and the list shows what fits.</li>
         <li>Keep tapping tracks to build your <b>thread</b>, the chain of tracks you've moved through.</li>
         <li><b>‹ Back one</b> steps back a track. Tap any track in the thread to jump back to it. <b>Clear thread</b> starts again.</li>
         <li><b>Save thread as crate</b> puts the whole thread into your crate in order.</li>
@@ -248,7 +248,7 @@
     <details><summary>Crates and saving to Spotify</summary>
       <ul>
         <li>Add tracks with <b>+</b>, your thread, a flow, or the current list.</li>
-        <li>Drag the <b>≡</b> handle to change the order. Tick <b>Sort by tempo</b> to order by tempo when saving.</li>
+        <li>Drag the <b>≡</b> handle to change the order. Tick <b>Sort by BPM</b> to order by BPM when saving.</li>
         <li><b>New playlist</b> creates a private Spotify playlist. <b>Add to existing</b> adds to one of your playlists and skips tracks already in it.</li>
         <li>Spotify doesn't let apps move playlists into folders, so drag them into a folder in Spotify yourself.</li>
       </ul>
@@ -263,7 +263,7 @@
 
     <details><summary>Adding keys for new tracks</summary>
       <ol>
-        <li>Put the new tracks in one of your own Spotify playlists, open it on your phone and tap <b>Mix</b> so keys and tempos show.</li>
+        <li>Put the new tracks in one of your own Spotify playlists, open it on your phone and tap <b>Mix</b> so keys and BPMs show.</li>
         <li>Screenshot the list as you scroll and send the screenshots to Claude.</li>
         <li>Claude replies with lines like <code>7B | 130 | Positive | Jamback | 2:49</code>. Copy them.</li>
         <li>Open that playlist in the <b>Playlists</b> tab, tap <b>Add keys</b>, paste and tap <b>Match</b>. ASH//FLOW pairs each line with the exact track in the playlist. Anything it can't find there, it searches Spotify for, using the length to pick the right version.</li>
@@ -292,7 +292,7 @@
       <label class="btn ghost filebtn">Restore backup<input id="restore" type="file" accept="application/json,.json" hidden></label>
     </div>
     <h2>Add tracks</h2>
-    <p class="note">Best route: open the playlist in the <b>Playlists</b> tab and use <b>Add keys</b> there. Use this box for tracks that aren't in one of your playlists; ASH//FLOW searches Spotify to find them. One track per line: <code>key | tempo | title | artist | length</code>.</p>
+    <p class="note">Best route: open the playlist in the <b>Playlists</b> tab and use <b>Add keys</b> there. Use this box for tracks that aren't in one of your playlists; ASH//FLOW searches Spotify to find them. One track per line: <code>key | BPM | title | artist | length</code>.</p>
     <textarea id="paste" rows="6" placeholder="7B | 130 | Positive | Jamback | 2:49"></textarea>
     <button class="btn" id="addPaste" type="button">Find tracks</button>
     <p class="status" id="pasteStatus" role="status"></p>
@@ -300,7 +300,7 @@
     <p class="note" id="spInfo"></p>
     <button class="btn ghost" id="logout" type="button">Disconnect Spotify</button>
     <h2>About the keys</h2>
-    <p class="note">Keys and tempos come from Spotify's Mix view. A is minor, B is major. Same key, one step, mood switch (same number, other letter), energy boost (+2) and diagonal moves all mix cleanly. The rules narrow the field; your ears decide the blend.</p>
+    <p class="note">Keys and BPMs come from Spotify's Mix view. A is minor, B is major. Same key, one step, mood switch (same number, other letter), energy boost (+2) and diagonal moves all mix cleanly. The rules narrow the field; your ears decide the blend.</p>
   </section>
 </main>
 

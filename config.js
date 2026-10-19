@@ -1,6 +1,6 @@
-// Your Spotify developer app's Client ID (not a secret). Set by Claude when publishing.
+// Spotify developer app Client ID (not a secret).
 window.CONFIG = {
-  spotifyClientId: "",
+  spotifyClientId: "2d4d55ba2ed349af99c52a75decf7db0",
   // Must match the Redirect URI saved in the Spotify developer dashboard exactly.
-  redirectUri: location.origin + location.pathname.replace(/index\.html$/, "")
+  redirectUri: "https://ashleyfouche.github.io/key-wheel/"
 };

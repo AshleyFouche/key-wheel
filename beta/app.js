@@ -645,7 +645,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.12";
+  const APP_VERSION = "2.13";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -754,13 +754,13 @@
   function paintMore() {
     genreStatus(null);
     const extra = ls.get("kwb.extra", []);
-    $("libInfo").textContent = `${T.length.toLocaleString()} tracks with keys (${extra.length} added on this phone). Your crate, settings and added tracks are stored on this phone; back them up now and then.`;
+    $("libInfo").textContent = `${T.length.toLocaleString()} tracks with keys (${extra.length} added on this phone). Your crate, settings, genres and added tracks are stored on this phone. Back up here, then Restore on another device to copy everything across.`;
     $("spInfo").textContent = !Spotify.configured() ? "Not set up yet." : Spotify.connected() ? "Connected." : "Not connected.";
     $("logout").hidden = !Spotify.connected();
   }
   $("logout").onclick = () => { Spotify.logout(); plCache = null; clearInterval(npTimer); np = null; paintNp(); paintSpotifyBtn(); paintMore(); toast("Disconnected from Spotify"); };
   $("backup").onclick = () => {
-    const data = { app: "key-wheel", saved: new Date().toISOString(), extra: ls.get("kwb.extra", []), history: ls.get("kwb.history", []), notes, kept: ls.get("kwb.kept", {}), crate, state: { key: state.key, on: state.on, dir: state.dir } };
+    const data = { app: "key-wheel", saved: new Date().toISOString(), extra: ls.get("kwb.extra", []), history: ls.get("kwb.history", []), notes, kept: ls.get("kwb.kept", {}), crate, state: { key: state.key, on: state.on, dir: state.dir }, genre, genreVer: FlowGenres.VERSION, art };
     const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "ashflow-backup.json"; document.body.appendChild(a); a.click(); a.remove();
   };
@@ -770,7 +770,16 @@
       const d = JSON.parse(await f.text());
       if (d.app !== "key-wheel") throw new Error("not an ASH//FLOW backup");
       ls.set("kwb.extra", d.extra || []); if (d.history) ls.set("kwb.history", d.history); if (d.notes) { notes = d.notes; ls.set("kwb.notes", notes); } if (d.kept) ls.set("kwb.kept", d.kept); crate = d.crate || []; saveCrate();
-      await loadLibrary(); crateOptions(); render(); paintMore(); toast("Backup restored");
+      // Genres and artwork merge in (newest lookup wins), so a phone's indexing carries over in one go.
+      let gN = 0;
+      if (d.genre && (d.genreVer || 1) >= FlowGenres.VERSION) {
+        for (const id in d.genre) { const r = d.genre[id], cur = genre[id]; if (!cur || (r.at || 0) > (cur.at || 0)) { genre[id] = r; gN++; } }
+        ls.set("kwb.genre", genre);
+      }
+      if (d.art) { Object.assign(art, d.art); ls.set("kwb.art", art); }
+      await loadLibrary(); crateOptions(); render(); paintMore();
+      if (typeof paintGenreChips === "function") paintGenreChips();
+      toast(gN ? `Backup restored · ${gN.toLocaleString()} genres added` : "Backup restored");
     } catch (err) { toast("Couldn't restore: " + err.message); }
     e.target.value = "";
   };

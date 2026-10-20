@@ -645,7 +645,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.13";
+  const APP_VERSION = "2.14";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1619,54 +1619,145 @@
   const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" });
   const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
   const openSess = new Set();
-  // Label a flow by when it started: morning 5–12, afternoon 12–17, evening 17–21, night 21–5.
+  // Parts of the day: morning 5–12, afternoon 12–17, evening 17–21, night 21–5.
   function partOfDay(t) {
     const h = new Date(t).getHours();
-    if (h >= 5 && h < 12) return { word: "morning", live: "This morning" };
-    if (h >= 12 && h < 17) return { word: "afternoon", live: "This afternoon" };
-    if (h >= 17 && h < 21) return { word: "evening", live: "This evening" };
-    return { word: "night", live: "Tonight" };
+    if (h >= 5 && h < 12) return { word: "morning", live: "this morning" };
+    if (h >= 12 && h < 17) return { word: "afternoon", live: "this afternoon" };
+    if (h >= 17 && h < 21) return { word: "evening", live: "this evening" };
+    return { word: "night", live: "tonight" };
   }
-  // BPM across a flow: one line, each dot coloured by its key. Tap a dot for the track.
-  function flowChart(recs) {
+  const cap = w => w.charAt(0).toUpperCase() + w.slice(1);
+  // A flow is named for the part of the day it covers; one that runs on is "afternoon into evening".
+  // A flow still going is named against the clock now, so it moves on as the night does.
+  function flowTitle(ses, latest) {
+    const live = latest && Date.now() - ses.last < GAP;
+    const a = partOfDay(ses.start), b = partOfDay(live ? Date.now() : ses.last);
+    const day = dayFmt.format(ses.start);
+    if (live) return (a.word === b.word ? cap(b.live) + "'s flow" : cap(a.word) + " into " + b.live) + " · " + day;
+    return day + " · " + (a.word === b.word ? a.word : a.word + " into " + b.word);
+  }
+  // BPM across a flow: one line, each dot coloured by its key. Tap a dot for the track; tap the chart to zoom.
+  // o.W / o.H set the drawing size (the full-screen view draws wider), o.times adds clock labels.
+  function flowChart(recs, o = {}) {
     const pts = recs.map((r, i) => ({ r, i })).filter(p => p.r.tempo);
     if (pts.length < 2) return "";
-    const W = 340, H = 108, L = 30, R = 8, Tp = 8, B = 30;   // B leaves room for the genre band and labels
+    const big = !!o.W, W = o.W || 340, H = o.H || 108, L = big ? 36 : 30, R = big ? 16 : 8, Tp = big ? 14 : 8, B = big ? 40 : 30;
     let lo = Math.min(...pts.map(p => p.r.tempo)), hi = Math.max(...pts.map(p => p.r.tempo));
     if (hi - lo < 6) { const mid = (hi + lo) / 2; lo = Math.floor(mid - 3); hi = Math.ceil(mid + 3); }
     const x = i => L + (recs.length === 1 ? 0 : i * (W - L - R) / (recs.length - 1));
     const y = v => Tp + (hi - v) * (H - Tp - B) / (hi - lo);
     const path = pts.map((p, j) => (j ? "L" : "M") + x(p.i).toFixed(1) + " " + y(p.r.tempo).toFixed(1)).join(" ");
-    const grid = [hi, Math.round((hi + lo) / 2), lo].map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="g"/><text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end">${v}</text>`).join("");
-    const dots = pts.map(p => `<g class="pt" data-i="${p.i}"><circle cx="${x(p.i)}" cy="${y(p.r.tempo)}" r="14" fill="transparent"/><circle cx="${x(p.i)}" cy="${y(p.r.tempo)}" r="4.5" class="d" style="fill:${p.r.key ? col(parseInt(p.r.key)) : "var(--muted)"}"/></g>`).join("");
+    const ticks = big ? [hi, Math.round(hi - (hi - lo) / 4), Math.round((hi + lo) / 2), Math.round(lo + (hi - lo) / 4), lo] : [hi, Math.round((hi + lo) / 2), lo];
+    const grid = [...new Set(ticks)].map(v => `<line x1="${big ? 0 : L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="g"/>${big ? "" : `<text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end">${v}</text>`}`).join("");
+    // Full-screen view: BPM labels live in their own strip that stays put while the chart scrolls.
+    const yaxis = big ? `<svg width="${L}" height="${H}" viewBox="0 0 ${L} ${H}">${[...new Set(ticks)].map(v => `<text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join("")}</svg>` : "";
+    const dr = big ? 6 : 4.5;
+    const dots = pts.map(p => `<g class="pt" data-i="${p.i}"><circle cx="${x(p.i)}" cy="${y(p.r.tempo)}" r="${big ? 18 : 14}" fill="transparent"/><circle cx="${x(p.i)}" cy="${y(p.r.tempo)}" r="${dr}" class="d" style="fill:${p.r.key ? col(parseInt(p.r.key)) : "var(--muted)"}"/>${big && p.r.key && (W - L - R) / Math.max(1, recs.length - 1) >= 24 ? `<text class="kl" x="${x(p.i)}" y="${y(p.r.tempo) - 10}" text-anchor="middle">${p.r.key}</text>` : ""}</g>`).join("");
     // Genre band: one segment per track, coloured by family, with a 2px gap between neighbours.
-    const step = recs.length > 1 ? (W - L - R) / (recs.length - 1) : W - L - R, by = H - B + 7, present = new Set();
+    const step = recs.length > 1 ? (W - L - R) / (recs.length - 1) : W - L - R, bh = big ? 9 : 7, by = H - B + (big ? 8 : 7), present = new Set();
     const band = recs.map((r, i) => {
       const g = gOf(r.id); if (!g) return ""; present.add(g.f);
       const x0 = Math.max(L, x(i) - step / 2) + 1, x1 = Math.min(W - R, x(i) + step / 2) - 1;
-      return x1 > x0 ? `<rect x="${x0.toFixed(1)}" y="${by}" width="${(x1 - x0).toFixed(1)}" height="7" rx="2" fill="${FlowGenres.FAM[g.f].col}"/>` : "";
+      return x1 > x0 ? `<rect x="${x0.toFixed(1)}" y="${by}" width="${(x1 - x0).toFixed(1)}" height="${bh}" rx="2" fill="${FlowGenres.FAM[g.f].col}"/>` : "";
     }).join("");
+    let axis = `<text x="${L}" y="${H - 2}">start</text><text x="${W - R}" y="${H - 2}" text-anchor="end">end</text>`;
+    if (o.times) {   // clock labels, spaced at least ~70px apart
+      const every = Math.max(1, Math.ceil(70 / Math.max(step, 1)));
+      axis = recs.map((r, i) => i % every ? "" : `<text x="${x(i)}" y="${H - 4}" text-anchor="${i === 0 ? "start" : "middle"}">${timeFmt.format(o.times[i])}</text>`).join("");
+    }
     const legend = present.size ? `<div class="fc-leg">${FlowGenres.FAMILIES.filter(f => present.has(f.id)).map(f => `<span><i style="background:${f.col}"></i>${esc(f.name)}</span>`).join("")}</div>` : "";
-    return `<div class="fchart" data-tips="${esc(JSON.stringify(recs.map(r => r.title + " · " + (r.key || "?") + " · " + (r.tempo || "–") + " BPM" + (gOf(r.id) ? " · " + famName(gOf(r.id).f) : ""))))}">
-      <div class="fc-t">BPM and genre through the flow</div>
-      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="BPM from ${pts[0].r.tempo} to ${pts[pts.length - 1].r.tempo} across ${recs.length} tracks">${grid}<path d="${path}" class="ln"/>${dots}${band}<text x="${L}" y="${H - 2}">start</text><text x="${W - R}" y="${H - 2}" text-anchor="end">end</text></svg>
+    const svgEl = `<svg viewBox="0 0 ${W} ${H}" ${big ? `width="${W}" height="${H}"` : ""} role="img" aria-label="BPM from ${pts[0].r.tempo} to ${pts[pts.length - 1].r.tempo} across ${recs.length} tracks">${grid}<path d="${path}" class="ln"/>${band}${dots}${axis}</svg>`;
+    if (big) return { svg: svgEl, legend, yaxis };
+    return `<div class="fchart" data-ses="${esc(o.key || "")}" data-tips="${esc(JSON.stringify(recs.map(r => r.title + " · " + (r.key || "?") + " · " + (r.tempo || "–") + " BPM" + (gOf(r.id) ? " · " + famName(gOf(r.id).f) : ""))))}">
+      <div class="fc-t">BPM and genre through the flow <span class="fc-z">· tap to zoom</span></div>
+      ${svgEl}
       ${legend}<div class="fc-tip" hidden></div></div>`;
   }
   document.addEventListener("click", e => {
+    if (e.target.closest("#fzoom")) return;
     const g = e.target.closest(".fchart .pt"), fc = e.target.closest(".fchart");
     document.querySelectorAll(".fchart .pt.on").forEach(n => { if (n !== g) n.classList.remove("on"); });
     document.querySelectorAll(".fc-tip").forEach(tp => { if (!fc || !fc.contains(tp)) tp.hidden = true; });
-    if (!g) { if (fc) fc.querySelector(".fc-tip").hidden = true; return; }
+    if (!g) { if (fc) { fc.querySelector(".fc-tip").hidden = true; if (fc.dataset.ses && sessByKey.has(fc.dataset.ses)) openZoom(sessByKey.get(fc.dataset.ses)); } return; }
     const tip = fc.querySelector(".fc-tip"), tips = JSON.parse(fc.dataset.tips), i = +g.dataset.i;
     tip.textContent = (i + 1) + ". " + tips[i]; tip.hidden = false; g.classList.add("on");
-    const svg = fc.querySelector("svg").getBoundingClientRect(), c = g.querySelector(".d").getBoundingClientRect(), box = fc.getBoundingClientRect();
+    const c = g.querySelector(".d").getBoundingClientRect(), box = fc.getBoundingClientRect();
     const left = c.left + c.width / 2 - box.left;
     tip.style.top = (c.top - box.top - 8) + "px";
     tip.style.left = Math.max(4, Math.min(box.width - tip.offsetWidth - 4, left - tip.offsetWidth / 2)) + "px";
   });
+
+  // ---------- full-screen flow chart: pinch or +/− to zoom, drag to scroll, tap a dot for the track ----------
+  const sessByKey = new Map();
+  const fz = { ses: null, recs: [], zoom: 1, sel: -1 };
+  function fzBase() { return Math.max(260, $("fzScroll").clientWidth - 2); }
+  function fzDraw(keepCenter) {
+    const sc = $("fzScroll"), n = fz.recs.length, base = fzBase();
+    const W = Math.round(Math.max(base, base * fz.zoom)), H = Math.max(220, Math.min(380, sc.clientHeight - 8));
+    const ratio = keepCenter && sc.scrollWidth > 0 ? (sc.scrollLeft + sc.clientWidth / 2) / sc.scrollWidth : null;
+    const c = flowChart(fz.recs, { W, H, times: fz.ses.plays.map(p => p.at) });
+    sc.innerHTML = `<div class="fchart fzc">${c.svg}</div>`;
+    $("fzY").innerHTML = c.yaxis;
+    $("fzLeg").innerHTML = c.legend;
+    if (ratio != null) sc.scrollLeft = ratio * sc.scrollWidth - sc.clientWidth / 2;
+    if (fz.sel >= 0) { const g = sc.querySelector(`.pt[data-i="${fz.sel}"]`); if (g) g.classList.add("on"); }
+    $("fzLevel").textContent = Math.round(fz.zoom * 100) + "%";
+    $("fzOut").disabled = fz.zoom <= 1; $("fzIn").disabled = fz.zoom >= Math.max(1, n / 4);
+  }
+  function fzSetZoom(z) { const max = Math.max(1, fz.recs.length / 4); fz.zoom = Math.min(max, Math.max(1, z)); fzDraw(true); }
+  function fzCard(i) {
+    const card = $("fzCard"); fz.sel = i;
+    if (i < 0) { card.hidden = true; return; }
+    const r = fz.recs[i], g = gOf(r.id), t = byId.get(r.id);
+    card.innerHTML = `<div class="fz-ct"><span class="fz-n">${i + 1}</span><div><b>${esc(r.title || "")}</b><span>${esc(r.artist || "")}</span></div></div>
+      <div class="fz-cm">${timeFmt.format(fz.ses.plays[i].at)} · ${r.key ? `<span class="k" style="background:${col(parseInt(r.key))}">${r.key}</span>` : "no key"} · ${r.tempo || "–"} BPM${g ? " · " + esc(famName(g.f)) : ""}</div>
+      <div class="acts">${t ? `<button class="btn" type="button" data-z="play">Play now</button><button class="btn ghost" type="button" data-z="queue">Queue</button><button class="btn ghost" type="button" data-z="mix">Mix out of this</button>` : `<span class="note">Not in your keyed library</span>`}</div>`;
+    card.hidden = false;
+    card.querySelectorAll("[data-z]").forEach(b => b.onclick = () => {
+      if (b.dataset.z === "play") playNow(r.id);
+      else if (b.dataset.z === "queue") enqueue(t);
+      else { closeZoom(); setAnchor(t); }
+    });
+  }
+  function openZoom(ses) {
+    fz.ses = ses; fz.recs = ses.plays.map(e => byId.get(e.id) || { id: e.id, title: e.title, artist: e.artist, tempo: 0, key: null });
+    fz.zoom = 1; fz.sel = -1;
+    $("fzTitle").textContent = flowTitle(ses, String(ses.start) === [...sessByKey.keys()][0]);
+    $("fzSub").textContent = `${timeFmt.format(ses.start)} – ${timeFmt.format(ses.last)} · ${fz.recs.length} tracks`;
+    $("fzoom").hidden = false; document.body.classList.add("fz-open");
+    $("fzCard").hidden = true;
+    requestAnimationFrame(() => fzDraw(false));
+  }
+  function closeZoom() { $("fzoom").hidden = true; document.body.classList.remove("fz-open"); }
+  (function wireZoom() {
+    const ov = $("fzoom"); if (!ov) return;
+    $("fzClose").onclick = closeZoom;
+    $("fzIn").onclick = () => fzSetZoom(fz.zoom * 1.6);
+    $("fzOut").onclick = () => fzSetZoom(fz.zoom / 1.6);
+    $("fzFit").onclick = () => fzSetZoom(1);
+    const sc = $("fzScroll");
+    sc.addEventListener("click", e => { const g = e.target.closest(".pt"); sc.querySelectorAll(".pt.on").forEach(n => n.classList.remove("on")); if (g) { g.classList.add("on"); fzCard(+g.dataset.i); } else fzCard(-1); });
+    // Pinch to zoom (two fingers); one finger scrolls sideways as normal.
+    let pinch = null, raf = 0;
+    const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    sc.addEventListener("touchstart", e => { if (e.touches.length === 2) pinch = { d: dist(e.touches), z: fz.zoom }; }, { passive: true });
+    sc.addEventListener("touchmove", e => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      const z = pinch.z * dist(e.touches) / pinch.d;
+      cancelAnimationFrame(raf); raf = requestAnimationFrame(() => fzSetZoom(z));
+    }, { passive: false });
+    sc.addEventListener("touchend", e => { if (e.touches.length < 2) pinch = null; });
+    ["gesturestart", "gesturechange"].forEach(ev => ov.addEventListener(ev, e => e.preventDefault()));
+    // Trackpad / mouse: ctrl + wheel (pinch on a trackpad) zooms.
+    sc.addEventListener("wheel", e => { if (e.ctrlKey) { e.preventDefault(); fzSetZoom(fz.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15)); } }, { passive: false });
+    document.addEventListener("keydown", e => { if (e.key === "Escape" && !ov.hidden) closeZoom(); });
+    window.addEventListener("resize", () => { if (!ov.hidden) fzDraw(true); });
+  })();
   function paintHistory() {
     const w = $("histWrap"), ss = sessions();
-    w.innerHTML = "";
+    w.innerHTML = ""; sessByKey.clear(); ss.forEach(ses => sessByKey.set(String(ses.start), ses));
     if (!ss.length) { w.innerHTML = '<p class="note">Nothing yet. Play some tracks through Spotify (from ASH//FLOW or Spotify itself) and they\'ll appear here once each has played for 30 seconds.</p>'; return; }
     ss.forEach((ses, i) => {
       const key = String(ses.start);
@@ -1674,8 +1765,8 @@
       const recs = ses.plays.map(e => byId.get(e.id) || { id: e.id, title: e.title, artist: e.artist, tempo: 0, key: null });
       const box = document.createElement("div"); box.className = "sess";
       const keys = recs.filter(r => r.key).map(r => `<span class="k" style="background:${col(parseInt(r.key))}">${r.key}</span>`).join("");
-      box.innerHTML = `<div class="sess-h"><b>${i === 0 && Date.now() - ses.last < GAP ? partOfDay(ses.start).live + "\'s flow · " + dayFmt.format(ses.start) : dayFmt.format(ses.start) + " · " + partOfDay(ses.start).word}</b><span>${timeFmt.format(ses.start)} – ${timeFmt.format(ses.last)} · ${recs.length} tracks</span></div>
-        <div class="sess-keys">${keys}</div>${flowChart(recs)}
+      box.innerHTML = `<div class="sess-h"><b>${esc(flowTitle(ses, i === 0))}</b><span>${timeFmt.format(ses.start)} – ${timeFmt.format(ses.last)} · ${recs.length} tracks</span></div>
+        <div class="sess-keys">${keys}</div>${flowChart(recs, { key })}
         <div class="acts"><button class="btn" type="button" data-a="crate">Use as crate</button><button class="btn ghost" type="button" data-a="addcrate">Add to crate</button><button class="btn ghost" type="button" data-a="toggle">${openSess.has(key) ? "Hide" : "Tracks"}</button><button class="btn ghost danger" type="button" data-a="del">Delete</button></div>`;
       if (openSess.has(key)) {
         const list = document.createElement("div"); list.className = "list";

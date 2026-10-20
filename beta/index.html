@@ -317,6 +317,13 @@
     <p class="note">Keys and BPMs come from Spotify's Mix view. A is minor, B is major. Same key, one step, mood switch (same number, other letter), energy boost (+2) and diagonal moves all mix cleanly. The rules narrow the field; your ears decide the blend.</p>
   </section>
 </main>
+<div id="fzoom" class="fz" hidden role="dialog" aria-modal="true" aria-labelledby="fzTitle">
+  <div class="fz-top"><div><b id="fzTitle"></b><span id="fzSub"></span></div><button id="fzClose" class="btn ghost" type="button" aria-label="Close">Done</button></div>
+  <div class="fz-ctl"><span class="fz-h">Pinch or use + and − to zoom · drag to move · tap a dot</span><div class="fz-b"><button id="fzOut" class="btn ghost" type="button" aria-label="Zoom out">−</button><span id="fzLevel">100%</span><button id="fzIn" class="btn ghost" type="button" aria-label="Zoom in">+</button><button id="fzFit" class="btn ghost" type="button">Fit</button></div></div>
+  <div class="fz-wrap"><div id="fzY" class="fz-y fchart"></div><div id="fzScroll" class="fz-scroll"></div></div>
+  <div id="fzLeg" class="fz-leg"></div>
+  <div id="fzCard" class="fz-card" hidden></div>
+</div>
 
 <div class="np" id="np" hidden>
   <div class="np-heads" id="npHeads" hidden></div>

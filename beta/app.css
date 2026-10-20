@@ -594,3 +594,8 @@ body.fz-open{overflow:hidden}
 .sheet .item.cand .ck{font-style:normal;color:#fff;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:999px;margin-right:6px;display:inline-block;vertical-align:1px}
 .sheet .item.cand small.warn{color:var(--warn)}
 .sheet .item.cand small.ok{color:var(--good)}
+.sheet .sh-sec{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:10px}
+.sheet .sh-gap{font-size:13px;color:var(--warn);display:grid;gap:8px;padding:8px 0}
+.sheet .sh-gap .btn{justify-self:start}
+#repQ{margin:4px 0}
+.sheet .item.cand small span.ok{color:var(--good)}.sheet .item.cand small span.warn{color:var(--warn)}

@@ -653,7 +653,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.21";
+  const APP_VERSION = "2.22";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -2052,12 +2052,15 @@
   const getDraft = () => drafts.find(d => d.id === curDraft) || null;
   // How well b follows a: key move + BPM fit. "rough" when the key clashes or BPM jumps more than 8.
   function fit(a, b) {
-    if (!a || !b) return { score: 0, rough: false, label: "" };
-    const m = a.key && b.key ? relations(a.key)[b.key] : null, d = tdist(a.tempo, b.tempo);
-    const dt = a.tempo && b.tempo ? b.tempo - a.tempo : 0;
-    const bpm = !a.tempo || !b.tempo ? "" : dt === 0 ? "same BPM" : (dt > 0 ? "+" : "") + dt + " BPM";
-    const score = (m ? MOVE_W[m] : -1) + (d <= 8 ? 1 - d / 8 : -(d - 8) / 8);
-    return { score, rough: !m || d > 8, label: (m ? MOVE_NAME[m] : a.key && b.key ? `Key clash ${a.key}→${b.key}` : "Key unknown") + (bpm ? " · " + bpm : "") };
+    if (!a || !b) return { score: 0, rough: false, label: "", known: false };
+    const keys = !!(a.key && b.key), bpms = !!(a.tempo && b.tempo);
+    const m = keys ? relations(a.key)[b.key] : null, d = bpms ? tdist(a.tempo, b.tempo) : 0;
+    const dt = bpms ? b.tempo - a.tempo : 0;
+    const bpm = !bpms ? "" : dt === 0 ? "same BPM" : (dt > 0 ? "+" : "") + dt + " BPM";
+    // Unknown key or BPM is neutral: it can't be checked, so it neither helps nor counts as a clash.
+    const score = (keys ? (m ? MOVE_W[m] : -1) : 0) + (bpms ? (d <= 8 ? 1 - d / 8 : -(d - 8) / 8) : 0);
+    const label = (keys ? (m ? MOVE_NAME[m] : `Key clash ${a.key}→${b.key}`) : "no key to check") + (bpm ? " · " + bpm : "");
+    return { score, rough: (keys && !m) || (bpms && d > 8), label, known: keys || bpms };
   }
   function draftStats(recs) {
     let rough = 0, jump = 0;
@@ -2068,11 +2071,20 @@
     return { rough, jump };
   }
   function openDraft(ses, title) {
-    const d = { id: "d" + Date.now(), name: "Draft · " + title, from: ses ? ses.start : null, ids: ses ? ses.plays.map(e => e.id) : [], at: Date.now() };
+    const d = { id: "d" + Date.now(), name: "Draft · " + title, from: ses ? ses.start : null, ids: ses ? ses.plays.map(e => e.id) : [], at: Date.now(), meta: {} };
+    if (ses) ses.plays.forEach(e => { if (!byId.has(e.id)) d.meta[e.id] = { title: e.title, artist: e.artist }; });
     d.ids = d.ids.filter((id, i) => d.ids.indexOf(id) === i);   // a track played twice appears once
     drafts.unshift(d); curDraft = d.id; saveDrafts(); go("draft"); window.scrollTo(0, 0);
   }
-  const dRec = id => recOf(id, qMeta.get(id));
+  // Tracks not in your keyed library still have their real name: from the draft, then from your history.
+  let histNames = null;
+  function dRec(id) {
+    if (byId.has(id)) return byId.get(id);
+    const d = getDraft(), m = d && d.meta && d.meta[id];
+    if (m) return recOf(id, m);
+    if (!histNames) { histNames = new Map(); ls.get("kwb.history", []).forEach(e => histNames.set(e.id, { title: e.title, artist: e.artist })); setTimeout(() => histNames = null, 5000); }
+    return recOf(id, histNames.get(id) || qMeta.get(id));
+  }
   function paintDraft() {
     const d = getDraft(), box = $("draftWrap");
     if (!d) { go("history"); return; }
@@ -2089,7 +2101,7 @@
       if (i > 0) {
         const f = fit(recs[i - 1], t), tr = document.createElement("div");
         tr.className = "dtrans" + (f.rough ? " rough" : "");
-        tr.innerHTML = `<span>${f.rough ? "⚠" : "↓"} ${esc(f.label)}</span>${f.rough ? `<button class="link" type="button" data-bridge="${i - 1}">Find a bridge</button>` : ""}`;
+        tr.innerHTML = `<span>${f.rough ? "⚠" : f.known ? "↓" : "?"} ${esc(f.label)}</span>${f.rough ? `<button class="link" type="button" data-bridge="${i - 1}">Find a bridge</button>` : ""}`;
         list.appendChild(tr);
       }
       const r = rowEl(t, null, setAnchor);
@@ -2131,64 +2143,109 @@
     });
   }
   // Candidates for a slot. replace: fit prev→t and t→next. insert: a bridge between i and i+1. append: continue from i.
-  function candidates(mode, i, n) {
-    const d = getDraft(), ids = d.ids, inDraft = new Set(ids);
+  // Each candidate says whether it fits the track before (a) and after (b); an unknown neighbour counts as a fit.
+  function slot(mode, i) {
+    const d = getDraft(), ids = d.ids;
     const prev = mode === "replace" ? (i > 0 ? dRec(ids[i - 1]) : null) : dRec(ids[i]);
     const next = mode === "replace" ? (i < ids.length - 1 ? dRec(ids[i + 1]) : null) : mode === "insert" ? dRec(ids[i + 1]) : null;
-    const was = mode === "replace" ? dRec(ids[i]) : prev;
-    const src = new Set([...(was.src || []), ...(was.crates || [])]), wg = gOf(was.id);
-    const target = mode === "insert" && prev.tempo && next.tempo ? (prev.tempo + next.tempo) / 2 : null;
-    const out = [];
-    for (const t of T) {
-      if (inDraft.has(t.id) || !t.key) continue;
-      const a = fit(prev, t), b = fit(t, next);
-      let sc = a.score + b.score;
-      if (target && t.tempo) sc += 0.5 * (1 - Math.min(Math.abs(t.tempo - target), 12) / 12);   // bridges sit between the two tempos
-      const g = gOf(t.id);
-      if ([...(t.src || []), ...(t.crates || [])].some(p => src.has(p))) sc += 0.35;
-      if (wg && g && g.f === wg.f) sc += 0.25;
-      out.push({ t, sc, a, b, rough: (prev && a.rough) || (next && b.rough) });
+    return { d, prev, next, was: mode === "replace" ? dRec(ids[i]) : prev };
+  }
+  function scoreCand(t, sl, mode) {
+    const { prev, next, was } = sl, a = fit(prev, t), b = fit(t, next);
+    let sc = a.score + b.score;
+    if (mode === "insert" && prev.tempo && next && next.tempo && t.tempo) sc += 0.5 * (1 - Math.min(Math.abs(t.tempo - (prev.tempo + next.tempo) / 2), 12) / 12);
+    const src = new Set([...(was.src || []), ...(was.crates || [])]), wg = gOf(was.id), g = gOf(t.id);
+    if ([...(t.src || []), ...(t.crates || [])].some(p => src.has(p))) sc += 0.35;
+    if (wg && g && g.f === wg.f) sc += 0.25;
+    return { t, sc, a, b, okA: !a.rough, okB: !b.rough };
+  }
+  function candidates(mode, i, n) {
+    const sl = slot(mode, i), inDraft = new Set(sl.d.ids), out = [];
+    for (const t of T) { if (!inDraft.has(t.id) && t.key) out.push(scoreCand(t, sl, mode)); }
+    return out.sort((x, y) => (y.okA + y.okB) - (x.okA + x.okB) || y.sc - x.sc).slice(0, n);
+  }
+  function candHtml(x, k, mode) {
+    const lab = mode === "append" ? `<small class="${x.okA ? "ok" : "warn"}">${esc(x.a.label)}</small>`
+      : `<small><span class="${x.okA ? "ok" : "warn"}">In: ${esc(x.a.label || "start of draft")}</span> · <span class="${x.okB ? "ok" : "warn"}">Out: ${esc(x.b.label || "end of draft")}</span></small>`;
+    return `<button class="item cand" type="button" data-k="${k}"><span class="hart" data-aid="${esc(x.t.id)}"></span><div class="cd"><div><i class="ck" style="background:${col(parseInt(x.t.key))}">${x.t.key}</i>${esc(x.t.title)}</div><small>${esc(x.t.artist)} · ${x.t.tempo || "–"} BPM${gOf(x.t.id) ? " · " + esc(famName(gOf(x.t.id).f)) : ""}</small>${lab}</div></button>`;
+  }
+  // Put up to 4 smooth steps between positions i and i+1. Returns how many were added and whether the last hop is smooth.
+  function bridgeBetween(d, i) {
+    const next = dRec(d.ids[i + 1]), used = new Set(d.ids), chain = [];
+    let cur = dRec(d.ids[i]);
+    for (let k = 0; k < 4 && fit(cur, next).rough; k++) {
+      let best = null, bs = -1e9;
+      for (const t of T) {
+        if (used.has(t.id) || !t.key) continue;
+        const a = fit(cur, t); if (a.rough) continue;
+        const b = fit(t, next), closer = cur.tempo && next.tempo && t.tempo ? Math.abs(cur.tempo - next.tempo) - Math.abs(t.tempo - next.tempo) : 0;
+        const sc = a.score + 1.5 * b.score + 0.15 * closer;
+        if (sc > bs) { bs = sc; best = t; }
+      }
+      if (!best) break;
+      chain.push(best.id); used.add(best.id); cur = best;
     }
-    return out.sort((x, y) => x.rough - y.rough || y.sc - x.sc).slice(0, n);
+    d.ids.splice(i + 1, 0, ...chain);
+    return { added: chain.length, smooth: !fit(cur, next).rough };
   }
   function pickFor(mode, i) {
     const d = getDraft(); if (!d) return;
-    const sh = $("sheet"), list = candidates(mode, i, 10);
+    const sh = $("sheet"), sl = slot(mode, i), list = candidates(mode, i, 40);
     const head = { replace: "Replace with…", insert: "Bridge between these two", append: "Continue with…" }[mode];
-    const sub = mode === "replace" ? `Fits the tracks either side of ${esc(dRec(d.ids[i]).title)}.` : mode === "insert" ? `From ${esc(dRec(d.ids[i]).title)} to ${esc(dRec(d.ids[i + 1]).title)}.` : `After ${esc(dRec(d.ids[i]).title)}.`;
+    let sub = mode === "replace" ? `Between ${sl.prev ? esc(sl.prev.title) : "the start"} and ${sl.next ? esc(sl.next.title) : "the end"}.` : mode === "insert" ? `From ${esc(sl.prev.title)} to ${esc(sl.next.title)}.` : `After ${esc(sl.prev.title)}.`;
+    const unknown = [sl.prev, sl.next].filter(x => x && !x.key).map(x => x.title);
+    if (unknown.length) sub += ` <b>${esc(unknown.join(" and "))}</b> ${unknown.length > 1 ? "have" : "has"} no key, so that side isn't checked.`;
+    let body = "";
+    const shown = [];
+    const section = (title, rows, max) => { const r = rows.slice(0, max); if (!r.length) return ""; const h = `<div class="sh-sec">${title}</div>` + r.map(x => { shown.push(x); return candHtml(x, shown.length - 1, mode); }).join(""); return h; };
+    if (mode === "append") body = section("Smooth from here", list.filter(x => x.okA), 10) || section("Nearest fits", list, 8);
+    else {
+      const both = list.filter(x => x.okA && x.okB), before = list.filter(x => x.okA && !x.okB), after = list.filter(x => !x.okA && x.okB);
+      const gap = sl.prev && sl.next && mode !== "insert" ? fit(sl.prev, sl.next) : null;
+      if (!both.length && gap && gap.known) {
+        const bpmGap = sl.prev.tempo && sl.next.tempo ? Math.abs(sl.next.tempo - sl.prev.tempo) : 0;
+        const apart = [sl.prev.key && sl.next.key && !relations(sl.prev.key)[sl.next.key] && !candidates(mode, i, 400).some(x => x.okA && x.okB) ? `${sl.prev.key} and ${sl.next.key} are too far apart on the wheel` : "", bpmGap > 16 ? bpmGap + " BPM apart" : ""].filter(Boolean).join(", ") || "the two sides pull different ways";
+        body += `<div class="sh-gap">No single track fits both sides (${esc(apart)}). <button class="btn ghost" type="button" id="gapBridge">Replace with a smooth bridge</button></div>`;
+      }
+      body += section(mode === "insert" ? "Bridges both ways" : "Fits both sides", both, 8) + section("Fits the track before", before, 5) + section("Fits the track after", after, 5);
+      if (!shown.length) body += section("Nearest fits", list, 8);
+    }
     sh.innerHTML = `<div class="grab"></div><div class="sh-t">${head}</div><div class="sh-a">${sub}</div>
+      ${mode === "replace" ? `<input id="repQ" type="search" placeholder="Or search your library…" autocomplete="off">` : ""}
       ${mode === "append" ? `<button class="item" type="button" id="fill5"><span>⇣</span>Fill the next 5 for me</button>` : ""}
       ${mode === "insert" ? `<button class="item" type="button" id="autoBridge"><span>⇢</span>Build a bridge for me (up to 4 tracks, smooth steps)</button>` : ""}
-      ${list.length ? list.map((x, k) => `<button class="item cand" type="button" data-k="${k}"><span class="hart" data-aid="${esc(x.t.id)}"></span><div class="cd"><div><i class="ck" style="background:${col(parseInt(x.t.key))}">${x.t.key}</i>${esc(x.t.title)}</div><small>${esc(x.t.artist)} · ${x.t.tempo || "–"} BPM${gOf(x.t.id) ? " · " + esc(famName(gOf(x.t.id).f)) : ""}</small><small class="${x.a.rough && mode !== "replace" || x.rough ? "warn" : "ok"}">${mode === "replace" ? (x.a.label ? "In: " + esc(x.a.label) : "") + (x.a.label && x.b.label ? " · " : "") + (x.b.label ? "Out: " + esc(x.b.label) : "") : mode === "insert" ? "In: " + esc(x.a.label) + " · Out: " + esc(x.b.label) : esc(x.a.label)}</small></div></button>`).join("") : '<p class="note">Nothing in your library fits here.</p>'}`;
+      <div id="candBox">${body || '<p class="note">Nothing in your library fits here.</p>'}</div>`;
     sh.hidden = false; $("sheetBg").hidden = false; sh.scrollTop = 0;
-    sh.querySelectorAll(".hart").forEach(el => { if (art[el.dataset.aid]) paintArt(el, el.dataset.aid); else if (artObs) artObs.observe(el); });
-    sh.querySelectorAll(".cand").forEach(b => b.onclick = () => {
-      const x = list[+b.dataset.k];
-      if (mode === "replace") d.ids[i] = x.t.id; else d.ids.splice(i + 1, 0, x.t.id);
-      d.at = Date.now(); saveDrafts(); paintDraft();
-      if (mode === "append") pickFor("append", i + 1);   // keep going: offer what comes next
-      else { closeMenu(); toast((mode === "replace" ? "Replaced with " : "Added ") + x.t.title); }
-    });
+    const wire = (rows) => {
+      sh.querySelectorAll(".hart").forEach(el => { if (art[el.dataset.aid]) paintArt(el, el.dataset.aid); else if (artObs) artObs.observe(el); });
+      sh.querySelectorAll(".cand").forEach(b => b.onclick = () => {
+        const x = rows[+b.dataset.k];
+        if (mode === "replace") d.ids[i] = x.t.id; else d.ids.splice(i + 1, 0, x.t.id);
+        d.at = Date.now(); saveDrafts(); paintDraft();
+        if (mode === "append") pickFor("append", i + 1);
+        else { closeMenu(); toast((mode === "replace" ? "Replaced with " : "Added ") + x.t.title); }
+      });
+    };
+    wire(shown);
+    const rq = $("repQ");
+    if (rq) rq.oninput = () => {
+      const q = normS(rq.value); const box = $("candBox");
+      if (q.length < 2) { box.innerHTML = body; wire(shown); return; }
+      const inDraft = new Set(d.ids), hits = T.filter(t => !inDraft.has(t.id) && (normS(t.title).includes(q) || normS(t.artist).includes(q))).slice(0, 15).map(t => scoreCand(t, sl, mode));
+      box.innerHTML = hits.length ? hits.map((x, k) => candHtml(x, k, mode)).join("") : '<p class="note">No tracks in your library match that.</p>';
+      wire(hits);
+    };
+    const gb = $("gapBridge");
+    if (gb) gb.onclick = () => {
+      d.ids.splice(i, 1); const r = bridgeBetween(d, i - 1); d.at = Date.now(); saveDrafts(); closeMenu(); paintDraft();
+      toast(r.added ? `Replaced with ${r.added} ${r.added === 1 ? "track" : "tracks"}${r.smooth ? " — smooth all the way" : " — the last hop is still rough"}` : "Couldn't find smooth steps — removed the track instead");
+    };
     const ab = $("autoBridge");
     if (ab) ab.onclick = () => {
-      const next = dRec(d.ids[i + 1]), used = new Set(d.ids), chain = [];
-      let cur = dRec(d.ids[i]);
-      for (let k = 0; k < 4 && fit(cur, next).rough; k++) {
-        let best = null, bs = -1e9;
-        for (const t of T) {
-          if (used.has(t.id) || !t.key) continue;
-          const a = fit(cur, t); if (a.rough) continue;            // every step must be smooth
-          const b = fit(t, next);
-          const closer = cur.tempo && next.tempo && t.tempo ? Math.abs(cur.tempo - next.tempo) - Math.abs(t.tempo - next.tempo) : 0;
-          const sc = a.score + 1.5 * b.score + 0.15 * closer;
-          if (sc > bs) { bs = sc; best = t; }
-        }
-        if (!best) break;
-        chain.push(best.id); used.add(best.id); cur = best;
-      }
-      if (!chain.length) { toast("Couldn't find smooth steps between these two"); return; }
-      d.ids.splice(i + 1, 0, ...chain); d.at = Date.now(); saveDrafts(); closeMenu(); paintDraft();
-      toast(fit(cur, next).rough ? `Added ${chain.length} steps — the last hop is still rough` : `Bridged in ${chain.length} smooth ${chain.length === 1 ? "step" : "steps"}`);
+      const r = bridgeBetween(d, i);
+      if (!r.added) { toast("Couldn't find smooth steps between these two"); return; }
+      d.at = Date.now(); saveDrafts(); closeMenu(); paintDraft();
+      toast(r.smooth ? `Bridged in ${r.added} smooth ${r.added === 1 ? "step" : "steps"}` : `Added ${r.added} steps — the last hop is still rough`);
     };
     const f5 = $("fill5");
     if (f5) f5.onclick = () => {

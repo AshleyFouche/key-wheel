@@ -508,3 +508,22 @@ pre.conn{white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--mono);fon
 .dgrow small{color:var(--muted)}
 .dgrow.miss{opacity:.7}
 #dgToken{width:100%;margin:6px 0}
+/* genres */
+.gchips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;align-items:center;margin-top:8px}
+.gchips::-webkit-scrollbar{display:none}
+.gchips .eyebrow{font-size:10px;flex:none;margin-right:2px}
+.gchips button{flex:none;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.gchips button i{width:8px;height:8px;border-radius:50%}
+.gchips button[aria-pressed="true"]{color:var(--ink);border-color:var(--ink);background:var(--raise)}
+.row .tt .a .gf{color:var(--muted);opacity:.8}
+.pv-g{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+.gchip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;border:1px solid var(--gc);border-radius:999px;padding:3px 10px}
+.gchip i{width:8px;height:8px;border-radius:50%;background:var(--gc)}
+.gsty{font-size:12px;color:var(--muted);padding:3px 4px}
+.fc-leg{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px;font-size:11px;color:var(--muted)}
+.fc-leg span{display:inline-flex;align-items:center;gap:5px}
+.fc-leg i{width:10px;height:6px;border-radius:2px}
+.gfams{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);margin-top:6px}
+.gfam{display:inline-flex;align-items:center;gap:6px}
+.gfam i{width:8px;height:8px;border-radius:50%}
+.gfam b{color:var(--ink);font-weight:600}

@@ -352,6 +352,8 @@
     recentlyPlayed, playerState, upNext, seek, next, previous,
     log: () => LOG.slice(), rawPlayer: () => api("/me/player"),
     trackArt: async id => { const t = await api("/tracks/" + id); return t.album && t.album.images && t.album.images.length ? t.album.images[t.album.images.length - 1].url : ""; },
+    trackArtistIds: async id => ((await api("/tracks/" + id)).artists || []).map(a => a.id).filter(Boolean),
+    artistGenres: async id => (await api("/artists/" + id)).genres || [],
     canLibrary, libContains, libSave, libRemove,
     setDeviceChooser: f => { chooser = f; },
     liveAdd, liveRemove, liveMove, liveReplace, playPlaylist,

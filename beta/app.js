@@ -59,9 +59,10 @@
     key: null,
     on: { ...ALL_ON },
     anchor: null, trail: [], shown: 60,
-    dir: ["build", "hold", "cool"].includes(saved.dir) ? saved.dir : "any"
+    dir: ["build", "hold", "cool"].includes(saved.dir) ? saved.dir : "any",
+    genres: Array.isArray(saved.genres) ? saved.genres : []
   };
-  const saveState = () => ls.set("kwb.state", { key: state.key, on: state.on, trail: state.trail.map(t => t.id), anchor: state.anchor ? state.anchor.id : null, dir: state.dir });
+  const saveState = () => ls.set("kwb.state", { key: state.key, on: state.on, trail: state.trail.map(t => t.id), anchor: state.anchor ? state.anchor.id : null, dir: state.dir, genres: state.genres });
   let crate = ls.get("kwb.crate", []);
   const saveCrate = () => { ls.set("kwb.crate", crate); const b = $("crateBadge"); b.textContent = crate.length; b.hidden = !crate.length; };
 
@@ -212,6 +213,7 @@
       if (cr === "__house" && !t.house) return false;
       if (cr && cr[0] !== "_" && t.crate !== cr) return false;
       if (qq && !(t.title + " " + t.artist).toLowerCase().includes(qq)) return false;
+      if (state.genres.length && !qq) { const g = gOf(t.id); if (!g || !state.genres.includes(g.f)) return false; }
       return true;
     });
     const ref = state.anchor ? state.anchor.tempo : null;
@@ -261,6 +263,47 @@
     } catch (e) {}
   }
 
+  // ---------- genres ----------
+  let genre = ls.get("kwb.genre", {}), genreDirty = false;
+  setInterval(() => { if (genreDirty) { genreDirty = false; ls.set("kwb.genre", genre); } }, 3000);
+  const gOf = id => { const g = genre[id]; return g && g.f ? g : null; };
+  const famName = f => (FlowGenres.FAM[f] || FlowGenres.FAM.other).name;
+  let genreTick = 0;
+  function genreStatus(msg) {
+    const st = $("gStatus"); if (!st) return;
+    const total = T.length, done = T.filter(t => genre[t.id]).length, withG = T.filter(t => gOf(t.id)).length;
+    st.textContent = (msg ? msg + " " : "") + `${done.toLocaleString()} of ${total.toLocaleString()} tracks checked · ${withG.toLocaleString()} with a genre` + (FlowGenres.running() ? " · fetching…" : "");
+    $("gRun").textContent = FlowGenres.running() ? "Pause" : (done < total ? (done ? "Resume fetching" : "Fetch genres") : "Check new tracks");
+    if (Date.now() - genreTick > 4000) { genreTick = Date.now(); paintFamCounts(); paintGenreChips(); }
+  }
+  function famCounts() { const c = {}; T.forEach(t => { const g = gOf(t.id); if (g) c[g.f] = (c[g.f] || 0) + 1; }); return c; }
+  function paintFamCounts() {
+    const c = famCounts(), box = $("gFams"); if (!box) return;
+    box.innerHTML = FlowGenres.FAMILIES.filter(f => c[f.id]).map(f => `<span class="gfam"><i style="background:${f.col}"></i>${esc(f.name)} <b>${c[f.id]}</b></span>`).join("");
+  }
+  FlowGenres.init({
+    Spotify, token: () => { try { return localStorage.getItem("kwb.discogsToken") || ""; } catch (e) { return ""; } },
+    store: () => genre, save: (id, g) => { genre[id] = Object.assign({ at: Date.now() }, g); genreDirty = true; },
+    recentIds: () => ls.get("kwb.history", []).slice(-300).reverse().map(e => e.id), crateIds: () => crate.slice(),
+    allTracks: () => T, track: id => byId.get(id), status: m => genreStatus(m)
+  });
+  // Wheel filter: families with enough of your tracks to be useful.
+  function paintGenreChips() {
+    const box = $("gChips"); if (!box) return;
+    const c = famCounts(), fams = FlowGenres.FAMILIES.filter(f => (c[f.id] || 0) >= 10);
+    box.hidden = !fams.length;
+    box.innerHTML = '<span class="eyebrow">Genre</span>' + `<button type="button" data-g="" aria-pressed="${!state.genres.length}">All</button>` +
+      fams.map(f => `<button type="button" data-g="${f.id}" aria-pressed="${state.genres.includes(f.id)}"><i style="background:${f.col}"></i>${esc(f.name)}</button>`).join("");
+    box.querySelectorAll("button").forEach(b => b.onclick = () => {
+      const g = b.dataset.g;
+      state.genres = !g ? [] : state.genres.includes(g) ? state.genres.filter(x => x !== g) : [...state.genres, g];
+      saveState(); state.shown = 60; paintGenreChips(); paintList(); paintSuggest();
+    });
+  }
+  let stayGenre = ls.get("kwb.stayGenre", false);
+  $("stayGenre").checked = stayGenre;
+  $("stayGenre").onchange = () => { stayGenre = $("stayGenre").checked; ls.set("kwb.stayGenre", stayGenre); headsKey = ""; paintSuggest(); toast(stayGenre ? "Suggestions and Auto-pick stay in the same genre family" : "Suggestions prefer, but aren't limited to, the same genre"); };
+
   // ---------- Liked Songs ----------
   // Green ✓ = in your Spotify library (Liked Songs / saved albums), checked 40 at a time and remembered for this session.
   const liked = new Map();
@@ -307,7 +350,7 @@
     const relLine = (m || pc) ? `<div class="rel">${m}${dTxt}${pc ? `<span class="mem">${m ? " · " : ""}★ played after this${pc > 1 ? " " + pc + "×" : ""}</span>` : ""}</div>` : "";
     const keyHtml = t.key ? `<span class="key" style="background:${col(parseInt(t.key))}">${t.key}</span>` : `<span class="key none">?</span>`;
     r.innerHTML = `<span class="art" data-aid="${esc(t.id)}"></span>
-      <span class="tt" role="button" tabindex="0">${relLine}<div>${esc(t.title)}${noteOf(t.id) ? ' <span class="hasnote" title="Has a note">✎</span>' : ""}</div><div class="a"><span class="lk${liked.get("spotify:track:" + t.id) === true ? " on" : ""}" data-lk="spotify:track:${esc(t.id)}"></span>${esc(t.artist)}</div></span>
+      <span class="tt" role="button" tabindex="0">${relLine}<div>${esc(t.title)}${noteOf(t.id) ? ' <span class="hasnote" title="Has a note">✎</span>' : ""}</div><div class="a"><span class="lk${liked.get("spotify:track:" + t.id) === true ? " on" : ""}" data-lk="spotify:track:${esc(t.id)}"></span>${esc(t.artist)}${gOf(t.id) ? ` <span class="gf">· ${esc(famName(gOf(t.id).f))}</span>` : ""}</div></span>
       <span class="meta"><span class="bpm">${t.tempo || "–"}</span>${keyHtml}</span>
       <button class="play" type="button" aria-label="Play in Spotify">${IC.play}</button>
       <button class="add${crate.includes(t.id) ? " in" : ""}" type="button" aria-label="Add to crate">${crate.includes(t.id) ? "✓" : "+"}</button>
@@ -366,7 +409,7 @@
   }
   function pick(k) { state.key = k; state.anchor = null; state.trail = []; state.shown = 60; saveState(); render(); }
   function showAll() { state.trail = []; state.key = null; state.anchor = null; tmin.value = ""; tmax.value = ""; sel.value = ""; state.shown = 60; saveState(); render(); }
-  function render() { paintWheel(); paintDir(); paintMoves(); paintAnchor(); paintList(); }
+  function render() { paintWheel(); paintDir(); paintMoves(); paintAnchor(); paintGenreChips(); paintList(); }
 
   // ---------- set direction ----------
   const DIRS = [
@@ -591,7 +634,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.10";
+  const APP_VERSION = "2.11";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -687,70 +730,18 @@
     $("connCopy").onclick = () => { navigator.clipboard.writeText(text).then(() => toast("Copied — paste it to Claude"), () => toast("Couldn't copy — take a screenshot instead")); };
   };
 
-  // ---------- genre test (Discogs) ----------
-  // Looks up a sample of tracks on Discogs (styles are per release, and very fine-grained for electronic music).
-  // A test only: shows what was found, saves nothing.
+  // ---------- genres: More-tab controls ----------
   try { $("dgToken").value = localStorage.getItem("kwb.discogsToken") || ""; } catch (e) {}
   $("dgToken").onchange = () => { try { localStorage.setItem("kwb.discogsToken", $("dgToken").value.trim()); } catch (e) {} };
-  async function fillDgPlaylists() {
-    if (!Spotify.connected() || $("dgPl").options.length > 1) return;
-    try {
-      const me = await Spotify.me(); plCache = plCache || await Spotify.myPlaylists();
-      plCache.filter(p => p && p.owner && p.owner.id === me.id).forEach(p => { const o = document.createElement("option"); o.value = p.id; o.textContent = p.name; $("dgPl").appendChild(o); });
-    } catch (e) {}
-  }
-  $("dgPl").onfocus = fillDgPlaylists;
-  const dgWait = ms => new Promise(r => setTimeout(r, ms));
-  async function dgSearch(token, params) {
-    const u = "https://api.discogs.com/database/search?" + new URLSearchParams(Object.assign({ type: "release", per_page: "5" }, params));
-    let r;
-    try { r = await fetch(u, { headers: { Authorization: "Discogs token=" + token } }); }
-    catch (e) { const x = new Error("Discogs couldn't be reached from this phone (the request was blocked)."); x.code = "blocked"; throw x; }
-    if (r.status === 401) { const x = new Error("Discogs didn't accept that token. Check it and try again."); x.code = "token"; throw x; }
-    if (r.status === 429) { await dgWait(5000); return dgSearch(token, params); }
-    if (!r.ok) throw new Error("Discogs error " + r.status);
-    return (await r.json()).results || [];
-  }
-  const dgBase = t => t.replace(/\s*[-–]\s*(?:.*\b(?:remix|mix|edit|version|dub|rework|original)\b.*)$/i, "").replace(/\s*[\(\[].*?[\)\]]\s*/g, " ").trim();
-  async function dgLookup(token, t) {
-    const artist = (t.artist || "").split(",")[0].trim(), title = dgBase(t.title || "");
-    let res = await dgSearch(token, { artist, track: title });
-    await dgWait(1100);
-    if (!res.length) { res = await dgSearch(token, { q: artist + " " + title }); await dgWait(1100); }
-    if (!res.length) return null;
-    // Styles from the best few releases, most common first.
-    const count = {};
-    res.slice(0, 3).forEach((r, i) => (r.style || []).forEach(s => count[s] = (count[s] || 0) + (3 - i)));
-    const styles = Object.keys(count).sort((a, b) => count[b] - count[a]).slice(0, 4);
-    const top = res[0];
-    return { styles, genres: top.genre || [], release: top.title || "", year: top.year || "" };
-  }
-  $("dgRun").onclick = async () => {
-    const token = $("dgToken").value.trim(), pl = $("dgPl").value, st = $("dgStatus"), out = $("dgOut");
-    if (!token) { st.textContent = "Paste your Discogs token first."; return; }
-    try { localStorage.setItem("kwb.discogsToken", token); } catch (e) {}
-    if (!pl) { st.textContent = "Choose a playlist to test."; fillDgPlaylists(); return; }
-    $("dgRun").disabled = true; out.innerHTML = ""; const t0 = Date.now();
-    try {
-      const tracks = (await Spotify.playlistTracks(pl)).slice(0, 25);
-      let found = 0, i = 0;
-      const list = document.createElement("div"); list.className = "dglist"; out.appendChild(list);
-      for (const t of tracks) {
-        i++; st.textContent = `Looking up ${i} of ${tracks.length}… (${found} found so far)`;
-        const r = await dgLookup(token, t);
-        if (r && r.styles.length) found++;
-        const d = document.createElement("div"); d.className = "dgrow" + (r && r.styles.length ? "" : " miss");
-        d.innerHTML = `<b>${esc(t.title)}</b> · ${esc(t.artist)}<br>` + (r && r.styles.length
-          ? `<span class="dgs">${r.styles.map(esc).join(" · ")}</span> <small>${esc(r.genres.join(", "))} — from “${esc(r.release)}”${r.year ? " (" + esc(String(r.year)) + ")" : ""}</small>`
-          : `<small>${r ? "Found on Discogs but no styles listed" : "Not found on Discogs"}</small>`);
-        list.appendChild(d);
-      }
-      st.textContent = `Done: styles found for ${found} of ${tracks.length} tracks in ${Math.round((Date.now() - t0) / 1000)} seconds. Check whether they look right.`;
-    } catch (e) { st.textContent = e.message; }
-    $("dgRun").disabled = false;
+  $("gRun").onclick = () => {
+    if (FlowGenres.running()) { FlowGenres.stop(); ls.set("kwb.genreOn", false); $("gStatus").textContent = "Pausing after this track…"; return; }
+    try { localStorage.setItem("kwb.discogsToken", $("dgToken").value.trim()); } catch (e) {}
+    if (!$("dgToken").value.trim() && !Spotify.connected()) { genreStatus("Paste your Discogs token first."); return; }
+    ls.set("kwb.genreOn", true); FlowGenres.start(); genreStatus(null);
   };
 
   function paintMore() {
+    genreStatus(null);
     const extra = ls.get("kwb.extra", []);
     $("libInfo").textContent = `${T.length.toLocaleString()} tracks with keys (${extra.length} added on this phone). Your crate, settings and added tracks are stored on this phone; back them up now and then.`;
     $("spInfo").textContent = !Spotify.configured() ? "Not set up yet." : Spotify.connected() ? "Connected." : "Not connected.";
@@ -1068,6 +1059,8 @@
     $("pvKey").innerHTML = rec && rec.key
       ? `<span class="k" style="background:${col(parseInt(rec.key))}">${rec.key}</span>${NAMES[rec.key]}${rec.tempo ? " · " + rec.tempo + " BPM" : ""}`
       : "No key yet in your library";
+    { const g = gOf(np.id), f = g && FlowGenres.FAM[g.f];
+      $("pvGenre").innerHTML = g ? `<span class="gchip" style="--gc:${f.col}"><i></i>${esc(f.name)}</span>${g.s.filter(x => x !== f.name).slice(0, 3).map(x => `<span class="gsty">${esc(x)}</span>`).join("")}` : ""; }
     $("pvWhere").innerHTML = (isLive() ? '<div class="livechip"><span></span>Playing from your Live set</div>' : "") + (rec ? whereHtml(rec) + noteHtml(rec.id) : "");
     $("pvDev").textContent = "";
     $("pvDevName").textContent = np.device || "Unknown device";
@@ -1618,7 +1611,7 @@
   function flowChart(recs) {
     const pts = recs.map((r, i) => ({ r, i })).filter(p => p.r.tempo);
     if (pts.length < 2) return "";
-    const W = 340, H = 92, L = 30, R = 8, Tp = 8, B = 14;
+    const W = 340, H = 108, L = 30, R = 8, Tp = 8, B = 30;   // B leaves room for the genre band and labels
     let lo = Math.min(...pts.map(p => p.r.tempo)), hi = Math.max(...pts.map(p => p.r.tempo));
     if (hi - lo < 6) { const mid = (hi + lo) / 2; lo = Math.floor(mid - 3); hi = Math.ceil(mid + 3); }
     const x = i => L + (recs.length === 1 ? 0 : i * (W - L - R) / (recs.length - 1));
@@ -1626,10 +1619,18 @@
     const path = pts.map((p, j) => (j ? "L" : "M") + x(p.i).toFixed(1) + " " + y(p.r.tempo).toFixed(1)).join(" ");
     const grid = [hi, Math.round((hi + lo) / 2), lo].map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="g"/><text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end">${v}</text>`).join("");
     const dots = pts.map(p => `<g class="pt" data-i="${p.i}"><circle cx="${x(p.i)}" cy="${y(p.r.tempo)}" r="14" fill="transparent"/><circle cx="${x(p.i)}" cy="${y(p.r.tempo)}" r="4.5" class="d" style="fill:${p.r.key ? col(parseInt(p.r.key)) : "var(--muted)"}"/></g>`).join("");
-    return `<div class="fchart" data-tips="${esc(JSON.stringify(recs.map(r => r.title + " · " + (r.key || "?") + " · " + (r.tempo || "–") + " BPM")))}">
-      <div class="fc-t">BPM through the flow</div>
-      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="BPM from ${pts[0].r.tempo} to ${pts[pts.length - 1].r.tempo} across ${recs.length} tracks">${grid}<path d="${path}" class="ln"/>${dots}<text x="${L}" y="${H - 2}">start</text><text x="${W - R}" y="${H - 2}" text-anchor="end">end</text></svg>
-      <div class="fc-tip" hidden></div></div>`;
+    // Genre band: one segment per track, coloured by family, with a 2px gap between neighbours.
+    const step = recs.length > 1 ? (W - L - R) / (recs.length - 1) : W - L - R, by = H - B + 7, present = new Set();
+    const band = recs.map((r, i) => {
+      const g = gOf(r.id); if (!g) return ""; present.add(g.f);
+      const x0 = Math.max(L, x(i) - step / 2) + 1, x1 = Math.min(W - R, x(i) + step / 2) - 1;
+      return x1 > x0 ? `<rect x="${x0.toFixed(1)}" y="${by}" width="${(x1 - x0).toFixed(1)}" height="7" rx="2" fill="${FlowGenres.FAM[g.f].col}"/>` : "";
+    }).join("");
+    const legend = present.size ? `<div class="fc-leg">${FlowGenres.FAMILIES.filter(f => present.has(f.id)).map(f => `<span><i style="background:${f.col}"></i>${esc(f.name)}</span>`).join("")}</div>` : "";
+    return `<div class="fchart" data-tips="${esc(JSON.stringify(recs.map(r => r.title + " · " + (r.key || "?") + " · " + (r.tempo || "–") + " BPM" + (gOf(r.id) ? " · " + famName(gOf(r.id).f) : ""))))}">
+      <div class="fc-t">BPM and genre through the flow</div>
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="BPM from ${pts[0].r.tempo} to ${pts[pts.length - 1].r.tempo} across ${recs.length} tracks">${grid}<path d="${path}" class="ln"/>${dots}${band}<text x="${L}" y="${H - 2}">start</text><text x="${W - R}" y="${H - 2}" text-anchor="end">end</text></svg>
+      ${legend}<div class="fc-tip" hidden></div></div>`;
   }
   document.addEventListener("click", e => {
     const g = e.target.closest(".fchart .pt"), fc = e.target.closest(".fchart");
@@ -1709,6 +1710,8 @@
     if (state.dir === "any" || !from.tempo || !t.tempo) sc += (1 - Math.min(Math.abs(dt), 8) / 8) * 0.8;
     else { const target = { build: 3, hold: 0, cool: -3 }[state.dir]; sc += (1 - Math.min(Math.abs(dt - target), 6) / 6) * 1.2; }
     sc += dirBonus(from, t, m, dt);
+    { const a = gOf(from.id), b = gOf(t.id);
+      if (a && b) { if (a.f === b.f) sc += 0.5; sc += Math.min(0.3, 0.1 * b.s.filter(x => a.s.includes(x)).length); } }
     sc += memBonus(from.id, t.id);
     return sc;
   }
@@ -1718,13 +1721,23 @@
     skip.add(from.id); if (handed) skip.add(handed); appQ.forEach(id => skip.add(id));
     const out = [];
     for (const t of T) {
+      { const g = gOf(t.id);
+        if (state.genres.length && (!g || !state.genres.includes(g.f))) continue;            // Wheel genre filter is on
+        if (stayGenre) { const a = gOf(from.id); if (a && (!g || g.f !== a.f)) continue; }   // "Stay in genre"
+      }
       if (skip.has(t.id)) continue;
       const m = rel[t.key]; if (!m) continue;
       if (from.tempo && t.tempo && Math.abs(t.tempo - from.tempo) > 8) continue;
       out.push({ t, m, sc: scoreFor(from, t, m) });
     }
     // Exact matches (same key and same BPM) always come first, then the rest by score.
-    const exact = x => x.m === "same" && from.tempo && x.t.tempo === from.tempo ? 1 : 0;
+    // Order: exact (same key + BPM) in the same genre → any same-genre match → exact in another genre → the rest.
+    // Tracks without a genre yet count as a genre match, so nothing changes until genres are fetched.
+    const fg = gOf(from.id);
+    const exact = x => {
+      const ex = x.m === "same" && from.tempo && x.t.tempo === from.tempo, g = gOf(x.t.id), same = !fg || !g || g.f === fg.f;
+      return ex && same ? 3 : same && fg && g ? 2 : ex ? 1 : 0;
+    };
     return out.sort((a, b) => exact(b) - exact(a) || b.sc - a.sc).slice(0, n);
   }
   function dirBonus(from, t, m, dt) {
@@ -1939,5 +1952,6 @@
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
     offerImport();
     setTimeout(syncArt, 4000);
+    setTimeout(() => { if (ls.get("kwb.genreOn", false)) FlowGenres.start(); }, 7000);
   })();
 })();

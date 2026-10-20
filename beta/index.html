@@ -36,6 +36,7 @@
         <label>BPM <input id="tmin" type="number" inputmode="numeric" aria-label="Lowest BPM"> to <input id="tmax" type="number" inputmode="numeric" aria-label="Highest BPM"></label>
         <select id="crate" aria-label="Crate"><option value="">All crates</option></select>
       </div>
+      <div class="gchips" id="gChips" role="group" aria-label="Genre filter" hidden></div>
     </div>
     <div class="count" id="count"></div>
     <div class="list" id="list"></div>
@@ -52,6 +53,7 @@
         <div class="pv-a" id="pvArtist"></div>
         <button class="pvlike like" id="pvLike" type="button" aria-label="Add to Liked Songs"></button>
         <div class="pv-k" id="pvKey"></div>
+        <div class="pv-g" id="pvGenre"></div>
         <div id="pvWhere"></div>
       </div>
       <div class="pv-prog">
@@ -70,7 +72,7 @@
       </div>
       <button class="devbtn" id="pvDevice" type="button"><span class="dico" id="pvDevIco"></span><span><small>Playing on</small><b id="pvDevName">—</b></span><span class="chev" id="pvChev"></span></button>
       <button class="btn" id="pvMix" type="button">Mix out of this</button>
-      <div class="qhead"><h2>Suggested next</h2><label class="htog" title="If nothing is queued, the top suggestion queues itself 8 seconds before the track ends"><input type="checkbox" id="autoTog2"> Auto-pick</label></div>
+      <div class="qhead"><h2>Suggested next</h2><label class="htog" title="If nothing is queued, the top suggestion queues itself 8 seconds before the track ends"><input type="checkbox" id="autoTog2"> Auto-pick</label><label class="htog" title="Only suggest tracks in the same genre family as what's playing"><input type="checkbox" id="stayGenre"> Stay in genre</label></div>
       <p class="note" id="sugNote">Best matches from what's playing, by key and BPM. Swipe right to queue.</p>
       <div class="list" id="pvSuggest"></div>
       <div class="qhead"><h2>Up next</h2><button class="btn ghost danger" id="qClear" type="button" hidden>Clear queue</button></div>
@@ -298,12 +300,12 @@
     <textarea id="paste" rows="6" placeholder="7B | 130 | Positive | Jamback | 2:49"></textarea>
     <button class="btn" id="addPaste" type="button">Find tracks</button>
     <p class="status" id="pasteStatus" role="status"></p>
-    <h2>Genre test (Discogs)</h2>
-    <p class="note">Checks how well Discogs knows your tracks. Paste your Discogs token (it stays on this phone), pick a playlist, and it looks up 25 tracks. Nothing is saved to your library.</p>
+    <h2>Genres</h2>
+    <p class="note">Genres come from Discogs (fine styles per release), with Spotify's artist genres as a fallback. Paste your Discogs token (it stays on this phone) and tap <b>Fetch genres</b>. It works through your library about one track a second while the app is open, and picks up where it left off next time.</p>
     <input id="dgToken" type="password" placeholder="Discogs token" autocomplete="off" aria-label="Discogs token">
-    <div class="frow"><select id="dgPl" aria-label="Playlist to test"><option value="">Choose a playlist…</option></select><button class="btn" id="dgRun" type="button">Run test</button></div>
-    <p class="note" id="dgStatus" role="status"></p>
-    <div id="dgOut"></div>
+    <div class="crate-actions"><button class="btn" id="gRun" type="button">Fetch genres</button></div>
+    <p class="note" id="gStatus" role="status"></p>
+    <div id="gFams" class="gfams"></div>
     <h2>Spotify</h2>
     <p class="note" id="spInfo"></p>
     <p class="note">This is the <b>beta</b>. New features land here first. It keeps its own crate, notes, flows and Live set, separate from your stable ASH//FLOW.</p>
@@ -354,6 +356,7 @@
 <script src="config.js"></script>
 <script src="spotify.js"></script>
 <script src="ocr.js"></script>
+<script src="genres.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

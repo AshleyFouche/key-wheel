@@ -599,3 +599,11 @@ body.fz-open{overflow:hidden}
 .sheet .sh-gap .btn{justify-self:start}
 #repQ{margin:4px 0}
 .sheet .item.cand small span.ok{color:var(--good)}.sheet .item.cand small span.warn{color:var(--warn)}
+.sheet .item.cand .ck.none{background:var(--surface);color:var(--muted)}
+/* Folding flows (2.23) */
+.sess-h{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.sess-h>div{display:grid;gap:2px;min-width:0}
+.sess-h .chev{font-style:normal;color:var(--muted);font-size:16px;flex:none}
+.sess.folded .acts{display:none}
+.sess.folded{padding-bottom:12px}
+.sess-h>div span{overflow:hidden;text-overflow:ellipsis}

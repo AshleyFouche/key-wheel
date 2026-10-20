@@ -653,7 +653,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.22";
+  const APP_VERSION = "2.23";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1648,7 +1648,7 @@
   }
   const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" });
   const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
-  const openSess = new Set();
+  const openSess = new Set(), expSess = new Set(); let expInit = false;
   // Parts of the day: morning 5–12, afternoon 12–17, evening 17–21, night 21–5.
   function partOfDay(t) {
     const h = new Date(t).getHours();
@@ -1791,14 +1791,17 @@
     if (!ss.length) { w.innerHTML += '<p class="note">Nothing yet. Play some tracks through Spotify (from ASH//FLOW or Spotify itself) and they\'ll appear here once each has played for 30 seconds.</p>'; return; }
     ss.forEach((ses, i) => {
       const key = String(ses.start);
-      if (i === 0 && !openSess.size) openSess.add(key);
+      if (!expInit && i === 0) { expSess.add(key); expInit = true; }   // newest flow starts open, the rest folded
+      const exp = expSess.has(key);
       const recs = ses.plays.map(e => byId.get(e.id) || { id: e.id, title: e.title, artist: e.artist, tempo: 0, key: null });
       const box = document.createElement("div"); box.className = "sess";
       const keys = recs.filter(r => r.key).map(r => `<span class="k" style="background:${col(parseInt(r.key))}">${r.key}</span>`).join("");
-      box.innerHTML = `<div class="sess-h"><b>${esc(flowTitle(ses, i === 0))}</b><span>${timeFmt.format(ses.start)} – ${timeFmt.format(ses.last)} · ${recs.length} tracks</span></div>
-        <div class="sess-keys">${keys}</div>${flowChart(recs, { key })}
+      const bp = recs.map(r => r.tempo).filter(Boolean);
+      box.dataset.key = key; box.classList.toggle("folded", !exp);
+      box.innerHTML = `<div class="sess-h" role="button" tabindex="0" aria-expanded="${exp}"><div><b>${esc(flowTitle(ses, i === 0))}</b><span>${timeFmt.format(ses.start)} – ${timeFmt.format(ses.last)} · ${recs.length} tracks${bp.length ? ` · ${Math.min(...bp)}–${Math.max(...bp)} BPM` : ""}</span></div><i class="chev">${exp ? "▾" : "▸"}</i></div>
+        ${exp ? `<div class="sess-keys">${keys}</div>${flowChart(recs, { key })}` : ""}
         <div class="acts"><button class="btn" type="button" data-a="crate">Use as crate</button><button class="btn ghost" type="button" data-a="draft">Edit as draft</button><button class="btn ghost" type="button" data-a="addcrate">Add to crate</button><button class="btn ghost" type="button" data-a="toggle">${openSess.has(key) ? "Hide" : "Tracks"}</button><button class="btn ghost danger" type="button" data-a="del">Delete</button></div>`;
-      if (openSess.has(key)) {
+      if (exp && openSess.has(key)) {
         const list = document.createElement("div"); list.className = "list";
         recs.forEach((r, j) => {
           const row = rowEl(r, null, setAnchor);
@@ -1808,7 +1811,16 @@
         });
         box.appendChild(list);
       }
-      box.querySelector(".sess-h").onclick = box.querySelector('[data-a="toggle"]').onclick = () => { openSess.has(key) ? openSess.delete(key) : openSess.add(key); paintHistory(); };
+      box.querySelector('[data-a="toggle"]').onclick = () => { openSess.has(key) ? openSess.delete(key) : openSess.add(key); paintHistory(); };
+      // Tap the heading to fold or unfold the whole flow; keep that heading where it was on screen.
+      const hd = box.querySelector(".sess-h");
+      hd.onclick = hd.onkeydown = e => {
+        if (e.type === "keydown" && e.key !== "Enter") return;
+        const top = hd.getBoundingClientRect().top;
+        expSess.has(key) ? expSess.delete(key) : expSess.add(key);
+        paintHistory();
+        const nh = document.querySelector(`.sess[data-key="${key}"] .sess-h`); if (nh) window.scrollBy(0, nh.getBoundingClientRect().top - top);
+      };
       box.querySelector('[data-a="crate"]').onclick = () => {
         crate = [...new Set(ses.plays.map(e => e.id))]; saveCrate();
         $("crateName").value = "ASH//FLOW · " + dayFmt.format(ses.start) + " " + new Date(ses.start).getFullYear();
@@ -2167,7 +2179,7 @@
   function candHtml(x, k, mode) {
     const lab = mode === "append" ? `<small class="${x.okA ? "ok" : "warn"}">${esc(x.a.label)}</small>`
       : `<small><span class="${x.okA ? "ok" : "warn"}">In: ${esc(x.a.label || "start of draft")}</span> · <span class="${x.okB ? "ok" : "warn"}">Out: ${esc(x.b.label || "end of draft")}</span></small>`;
-    return `<button class="item cand" type="button" data-k="${k}"><span class="hart" data-aid="${esc(x.t.id)}"></span><div class="cd"><div><i class="ck" style="background:${col(parseInt(x.t.key))}">${x.t.key}</i>${esc(x.t.title)}</div><small>${esc(x.t.artist)} · ${x.t.tempo || "–"} BPM${gOf(x.t.id) ? " · " + esc(famName(gOf(x.t.id).f)) : ""}</small>${lab}</div></button>`;
+    return `<button class="item cand" type="button" data-k="${k}"><span class="hart" data-aid="${esc(x.t.id)}"></span><div class="cd"><div>${x.t.key ? `<i class="ck" style="background:${col(parseInt(x.t.key))}">${x.t.key}</i>` : `<i class="ck none">?</i>`}${esc(x.t.title)}</div><small>${esc(x.t.artist)} · ${x.t.tempo || "–"} BPM${gOf(x.t.id) ? " · " + esc(famName(gOf(x.t.id).f)) : ""}</small>${lab}</div></button>`;
   }
   // Put up to 4 smooth steps between positions i and i+1. Returns how many were added and whether the last hop is smooth.
   function bridgeBetween(d, i) {
@@ -2211,7 +2223,7 @@
       if (!shown.length) body += section("Nearest fits", list, 8);
     }
     sh.innerHTML = `<div class="grab"></div><div class="sh-t">${head}</div><div class="sh-a">${sub}</div>
-      ${mode === "replace" ? `<input id="repQ" type="search" placeholder="Or search your library…" autocomplete="off">` : ""}
+      ${mode === "replace" ? `<input id="repQ" type="search" placeholder="Or search your library and Spotify…" autocomplete="off">` : ""}
       ${mode === "append" ? `<button class="item" type="button" id="fill5"><span>⇣</span>Fill the next 5 for me</button>` : ""}
       ${mode === "insert" ? `<button class="item" type="button" id="autoBridge"><span>⇢</span>Build a bridge for me (up to 4 tracks, smooth steps)</button>` : ""}
       <div id="candBox">${body || '<p class="note">Nothing in your library fits here.</p>'}</div>`;
@@ -2220,6 +2232,7 @@
       sh.querySelectorAll(".hart").forEach(el => { if (art[el.dataset.aid]) paintArt(el, el.dataset.aid); else if (artObs) artObs.observe(el); });
       sh.querySelectorAll(".cand").forEach(b => b.onclick = () => {
         const x = rows[+b.dataset.k];
+        if (!byId.has(x.t.id)) { d.meta = d.meta || {}; d.meta[x.t.id] = { title: x.t.title, artist: x.t.artist }; }
         if (mode === "replace") d.ids[i] = x.t.id; else d.ids.splice(i + 1, 0, x.t.id);
         d.at = Date.now(); saveDrafts(); paintDraft();
         if (mode === "append") pickFor("append", i + 1);
@@ -2227,13 +2240,33 @@
       });
     };
     wire(shown);
-    const rq = $("repQ");
+    // Search: your library straight away, then all of Spotify a moment later (those have no key, so fit is only by name).
+    const rq = $("repQ"); let rqTimer = 0, rqSeq = 0;
     if (rq) rq.oninput = () => {
-      const q = normS(rq.value); const box = $("candBox");
+      const raw = rq.value.trim(), q = normS(raw); const box = $("candBox"), seq = ++rqSeq;
+      clearTimeout(rqTimer);
       if (q.length < 2) { box.innerHTML = body; wire(shown); return; }
-      const inDraft = new Set(d.ids), hits = T.filter(t => !inDraft.has(t.id) && (normS(t.title).includes(q) || normS(t.artist).includes(q))).slice(0, 15).map(t => scoreCand(t, sl, mode));
-      box.innerHTML = hits.length ? hits.map((x, k) => candHtml(x, k, mode)).join("") : '<p class="note">No tracks in your library match that.</p>';
-      wire(hits);
+      const inDraft = new Set(d.ids), hits = T.filter(t => !inDraft.has(t.id) && (normS(t.title).includes(q) || normS(t.artist).includes(q))).slice(0, 12).map(t => scoreCand(t, sl, mode));
+      const paint = (sp, note) => {
+        const all = hits.concat(sp);
+        box.innerHTML = `<div class="sh-sec">In your library</div>` + (hits.length ? hits.map((x, k) => candHtml(x, k, mode)).join("") : '<p class="note">No matches in your library.</p>') +
+          `<div class="sh-sec">On Spotify</div>` + (sp.length ? sp.map((x, k) => candHtml(x, hits.length + k, mode)).join("") : `<p class="note">${note}</p>`);
+        wire(all);
+      };
+      paint([], Spotify.connected() ? "Searching Spotify…" : "Connect Spotify to search beyond your library.");
+      if (!Spotify.connected()) return;
+      rqTimer = setTimeout(async () => {
+        try {
+          const r = await Spotify.searchAll(raw);
+          if (seq !== rqSeq) return;
+          const sp = r.items.filter(it => !inDraft.has(it.id) && !hits.some(h => h.t.id === it.id)).map(it => {
+            noteArt(it.id, it.art);
+            const t = byId.get(it.id) || { id: it.id, title: it.title, artist: it.artist, tempo: 0, key: null, src: [], crates: [], spotify: true };
+            return scoreCand(t, sl, mode);
+          });
+          paint(sp, "Nothing on Spotify for that.");
+        } catch (e) { if (seq === rqSeq) paint([], "Couldn't search Spotify right now."); }
+      }, 450);
     };
     const gb = $("gapBridge");
     if (gb) gb.onclick = () => {

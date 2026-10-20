@@ -27,7 +27,7 @@
     { id: "diag", name: "Diagonal", f: (n, l) => l === "A" ? [[wrap(n + 1), "B"]] : [[wrap(n - 1), "A"]] }
   ];
   const ALL_ON = { same: 1, adj: 1, rel: 1, boost: 1, diag: 1 };
-  const MOVE_NAME = Object.fromEntries(MOVES.map(m => [m.id, m.name]));
+  const MOVE_NAME = Object.assign(Object.fromEntries(MOVES.map(m => [m.id, m.name])), { any: "Key change" });
   function relations(key) {
     if (!key) return null;
     const n = parseInt(key), l = key.slice(-1), map = {};
@@ -653,7 +653,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.16";
+  const APP_VERSION = "2.17";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1864,7 +1864,25 @@
       const ex = x.m === "same" && from.tempo && x.t.tempo === from.tempo, g = gOf(x.t.id), same = !fg || !g || g.f === fg.f;
       return ex && same ? 3 : same && fg && g ? 2 : ex ? 1 : 0;
     };
-    return out.sort((a, b) => exact(b) - exact(a) || b.sc - a.sc).slice(0, n);
+    if (out.length) return out.sort((a, b) => exact(b) - exact(a) || b.sc - a.sc).slice(0, n);
+    return widen(from, n, skip, rel);
+  }
+  // Nothing close? Never leave the music to stop. Widen step by step:
+  // 1) a compatible key at half or double time (e.g. 165 → ~82), 2) a compatible key at the nearest BPM,
+  // 3) the nearest BPM in any key. Same genre is preferred at each step.
+  const tdist = (a, b) => !a || !b ? 99 : Math.min(Math.abs(a - b), Math.abs(a - 2 * b), Math.abs(2 * a - b));
+  function widen(from, n, skip, rel) {
+    const fg = gOf(from.id), pool = [];
+    for (const t of T) {
+      if (skip.has(t.id) || !t.key) continue;
+      const g = gOf(t.id);
+      if (state.genres.length && (!g || !state.genres.includes(g.f))) continue;
+      if (stayGenre && fg && (!g || g.f !== fg.f)) continue;
+      pool.push({ t, m: rel[t.key] || "any", d: tdist(from.tempo, t.tempo), sameG: fg && g && g.f === fg.f ? 1 : 0 });
+    }
+    const tier = x => x.m !== "any" && x.d <= 8 ? 3 : x.m !== "any" ? 2 : x.d <= 8 ? 1 : 0;
+    return pool.sort((a, b) => tier(b) - tier(a) || a.d - b.d || b.sameG - a.sameG || (MOVE_W[b.m] || 0) - (MOVE_W[a.m] || 0))
+      .slice(0, n).map(x => Object.assign(x, { sc: 0, wide: true }));
   }
   function dirBonus(from, t, m, dt) {
     const toB = from.key.endsWith("A") && t.key.endsWith("B"), toA = from.key.endsWith("B") && t.key.endsWith("A");
@@ -1955,7 +1973,8 @@
       if (st.fallback) html += `<div class="hautoline"><span>This track has no key yet — following <b>${esc(st.cur.title)}</b>, the last one that did</span></div>`;
       const sug = suggest(st.cur, 3);
       html += sug.map(x => `<div class="hsug"><span class="hart" data-aid="${esc(x.t.id)}"></span><span class="k" style="background:${col(parseInt(x.t.key))}">${x.t.key}</span><span class="ht"><b>${esc(x.t.title)}</b><small>${esc(x.t.artist)} · ${x.t.tempo || "–"} · ${MOVE_NAME[x.m]}${pairCount(st.cur.id, x.t.id) ? ' · <span class="mem">★ played after</span>' : ""}</small></span><button type="button" class="hq" data-id="${esc(x.t.id)}">${st.mode === "clash" && !handed ? "Play next" : "Queue"}</button></div>`).join("");
-      if (!sug.length) html += '<div class="hsug"><small>No close matches in your library for this one.</small></div>';
+      if (!sug.length) html += '<div class="hnone">Nothing in your library to follow this one.</div>';
+      else if (sug[0].wide) html = html.replace('<div class="hsug">', '<div class="hnone">No close match — these are the nearest fits.</div><div class="hsug">');
     }
     box.innerHTML = html;
     box.querySelectorAll(".hart").forEach(el => { if (art[el.dataset.aid]) paintArt(el, el.dataset.aid); else if (artObs) artObs.observe(el); });
@@ -1992,8 +2011,8 @@
     const sug = suggest(cur, 6);
     if (!sug.length) { box.innerHTML = '<p class="note">No close matches in your library.</p>'; return; }
     const d = DIRS.find(d => d.id === state.dir);
-    $("sugNote").textContent = (ref.fallback ? `This track has no key yet, so these follow “${cur.title}”, the last one that did. ` : "") +
-      (state.dir === "any" ? (ref.fallback ? "" : "Best matches from what's playing, by key and BPM.") : `Leaning ${d.name.toLowerCase()} ${d.sym} — change it on the Wheel tab.`) + " Swipe right to queue.";
+    $("sugNote").textContent = (sug[0].wide ? "No close matches, so these are the nearest fits: half or double time, or the closest BPM. " : "") + (ref.fallback ? `This track has no key yet, so these follow “${cur.title}”, the last one that did. ` : "") +
+      (state.dir === "any" ? (ref.fallback || sug[0].wide ? "" : "Best matches from what's playing, by key and BPM.") : `Leaning ${d.name.toLowerCase()} ${d.sym} — change it on the Wheel tab.`) + " Swipe right to queue.";
     sug.forEach(x => {
       const r = rowEl(x.t, null, setAnchor, cur);
       let lab = r.querySelector(".tt .rel");

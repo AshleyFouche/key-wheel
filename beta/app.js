@@ -653,7 +653,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.20";
+  const APP_VERSION = "2.21";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1682,7 +1682,7 @@
     // Full-screen view: BPM labels live in their own strip that stays put while the chart scrolls.
     const yaxis = big ? `<svg width="${L}" height="${H}" viewBox="0 0 ${L} ${H}">${[...new Set(ticks)].map(v => `<text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join("")}</svg>` : "";
     const dr = big ? 6 : 4.5;
-    const dots = pts.map(p => `<g class="pt" data-i="${p.i}"><circle cx="${x(p.i)}" cy="${y(p.r.tempo)}" r="${big ? 18 : 14}" fill="transparent"/><circle cx="${x(p.i)}" cy="${y(p.r.tempo)}" r="${dr}" class="d" style="fill:${p.r.key ? col(parseInt(p.r.key)) : "var(--muted)"}"/>${big && p.r.key && (W - L - R) / Math.max(1, recs.length - 1) >= 24 ? `<text class="kl" x="${x(p.i)}" y="${y(p.r.tempo) - 10}" text-anchor="middle">${p.r.key}</text>` : ""}</g>`).join("");
+    const dots = pts.map(p => `<g class="pt" data-i="${p.i}"><circle cx="${x(p.i)}" cy="${y(p.r.tempo)}" r="${big ? 18 : 14}" fill="transparent"/><circle cx="${x(p.i)}" cy="${y(p.r.tempo)}" r="${dr}" class="d" style="fill:${p.r.key ? col(parseInt(p.r.key)) : "var(--muted)"}"/>${p.i > 0 && fit(recs[p.i - 1], p.r).rough ? `<circle cx="${x(p.i)}" cy="${y(p.r.tempo)}" r="${dr + 3.5}" class="clash"/>` : ""}${big && p.r.key && (W - L - R) / Math.max(1, recs.length - 1) >= 24 ? `<text class="kl" x="${x(p.i)}" y="${y(p.r.tempo) - 10}" text-anchor="middle">${p.r.key}</text>` : ""}</g>`).join("");
     // Genre band: one segment per track, coloured by family, with a 2px gap between neighbours.
     const step = recs.length > 1 ? (W - L - R) / (recs.length - 1) : W - L - R, bh = big ? 9 : 7, by = H - B + (big ? 8 : 7), present = new Set();
     const band = recs.map((r, i) => {
@@ -1699,7 +1699,7 @@
     const svgEl = `<svg viewBox="0 0 ${W} ${H}" ${big ? `width="${W}" height="${H}"` : ""} role="img" aria-label="BPM from ${pts[0].r.tempo} to ${pts[pts.length - 1].r.tempo} across ${recs.length} tracks">${grid}<path d="${path}" class="ln"/>${band}${dots}${axis}</svg>`;
     if (big) return { svg: svgEl, legend, yaxis };
     return `<div class="fchart" data-ses="${esc(o.key || "")}" data-tips="${esc(JSON.stringify(recs.map(r => r.title + " · " + (r.key || "?") + " · " + (r.tempo || "–") + " BPM" + (gOf(r.id) ? " · " + famName(gOf(r.id).f) : ""))))}">
-      <div class="fc-t">BPM and genre through the flow <span class="fc-z">· tap to zoom</span></div>
+      <div class="fc-t">BPM and genre through the flow${o.key ? ` <span class="fc-z">· tap to zoom</span>` : ""}</div>
       ${svgEl}
       ${legend}<div class="fc-tip" hidden></div></div>`;
   }
@@ -1786,8 +1786,8 @@
   })();
   function paintHistory() {
     const w = $("histWrap"), ss = sessions();
-    w.innerHTML = ""; sessByKey.clear(); ss.forEach(ses => sessByKey.set(String(ses.start), ses));
-    if (!ss.length) { w.innerHTML = '<p class="note">Nothing yet. Play some tracks through Spotify (from ASH//FLOW or Spotify itself) and they\'ll appear here once each has played for 30 seconds.</p>'; return; }
+    w.innerHTML = draftsHtml(); w.querySelectorAll("[data-d]").forEach(b => b.onclick = () => { curDraft = b.dataset.d; saveDrafts(); go("draft"); window.scrollTo(0, 0); }); sessByKey.clear(); ss.forEach(ses => sessByKey.set(String(ses.start), ses));
+    if (!ss.length) { w.innerHTML += '<p class="note">Nothing yet. Play some tracks through Spotify (from ASH//FLOW or Spotify itself) and they\'ll appear here once each has played for 30 seconds.</p>'; return; }
     ss.forEach((ses, i) => {
       const key = String(ses.start);
       if (i === 0 && !openSess.size) openSess.add(key);
@@ -1796,7 +1796,7 @@
       const keys = recs.filter(r => r.key).map(r => `<span class="k" style="background:${col(parseInt(r.key))}">${r.key}</span>`).join("");
       box.innerHTML = `<div class="sess-h"><b>${esc(flowTitle(ses, i === 0))}</b><span>${timeFmt.format(ses.start)} – ${timeFmt.format(ses.last)} · ${recs.length} tracks</span></div>
         <div class="sess-keys">${keys}</div>${flowChart(recs, { key })}
-        <div class="acts"><button class="btn" type="button" data-a="crate">Use as crate</button><button class="btn ghost" type="button" data-a="addcrate">Add to crate</button><button class="btn ghost" type="button" data-a="toggle">${openSess.has(key) ? "Hide" : "Tracks"}</button><button class="btn ghost danger" type="button" data-a="del">Delete</button></div>`;
+        <div class="acts"><button class="btn" type="button" data-a="crate">Use as crate</button><button class="btn ghost" type="button" data-a="draft">Edit as draft</button><button class="btn ghost" type="button" data-a="addcrate">Add to crate</button><button class="btn ghost" type="button" data-a="toggle">${openSess.has(key) ? "Hide" : "Tracks"}</button><button class="btn ghost danger" type="button" data-a="del">Delete</button></div>`;
       if (openSess.has(key)) {
         const list = document.createElement("div"); list.className = "list";
         recs.forEach((r, j) => {
@@ -1813,6 +1813,7 @@
         $("crateName").value = "ASH//FLOW · " + dayFmt.format(ses.start) + " " + new Date(ses.start).getFullYear();
         go("crate"); window.scrollTo(0, 0); toast(`Crate set to this flow (${crate.length} tracks)`);
       };
+      box.querySelector('[data-a="draft"]').onclick = () => openDraft(ses, flowTitle(ses, i === 0));
       box.querySelector('[data-a="addcrate"]').onclick = () => {
         let n = 0; ses.plays.forEach(e => { if (!crate.includes(e.id)) { crate.push(e.id); n++; } });
         saveCrate();
@@ -2043,10 +2044,169 @@
     });
   }
 
+  // ---------- flow drafts: rework a past flow without touching the record of what was played ----------
+  // A draft is a copy of a flow's tracks you can reorder, replace, bridge and branch, then use as a crate.
+  let drafts = ls.get("kwb.drafts", []), curDraft = ls.get("kwb.draftCur", null);
+  const saveDrafts = () => { ls.set("kwb.drafts", drafts); ls.set("kwb.draftCur", curDraft); };
+  const getDraft = () => drafts.find(d => d.id === curDraft) || null;
+  // How well b follows a: key move + BPM fit. "rough" when the key clashes or BPM jumps more than 8.
+  function fit(a, b) {
+    if (!a || !b) return { score: 0, rough: false, label: "" };
+    const m = a.key && b.key ? relations(a.key)[b.key] : null, d = tdist(a.tempo, b.tempo);
+    const dt = a.tempo && b.tempo ? b.tempo - a.tempo : 0;
+    const bpm = !a.tempo || !b.tempo ? "" : dt === 0 ? "same BPM" : (dt > 0 ? "+" : "") + dt + " BPM";
+    const score = (m ? MOVE_W[m] : -1) + (d <= 8 ? 1 - d / 8 : -(d - 8) / 8);
+    return { score, rough: !m || d > 8, label: (m ? MOVE_NAME[m] : a.key && b.key ? `Key clash ${a.key}→${b.key}` : "Key unknown") + (bpm ? " · " + bpm : "") };
+  }
+  function draftStats(recs) {
+    let rough = 0, jump = 0;
+    for (let i = 1; i < recs.length; i++) {
+      if (fit(recs[i - 1], recs[i]).rough) rough++;
+      if (recs[i - 1].tempo && recs[i].tempo) { const dt = recs[i].tempo - recs[i - 1].tempo; if (Math.abs(dt) > Math.abs(jump)) jump = dt; }
+    }
+    return { rough, jump };
+  }
+  function openDraft(ses, title) {
+    const d = { id: "d" + Date.now(), name: "Draft · " + title, from: ses ? ses.start : null, ids: ses ? ses.plays.map(e => e.id) : [], at: Date.now() };
+    d.ids = d.ids.filter((id, i) => d.ids.indexOf(id) === i);   // a track played twice appears once
+    drafts.unshift(d); curDraft = d.id; saveDrafts(); go("draft"); window.scrollTo(0, 0);
+  }
+  const dRec = id => recOf(id, qMeta.get(id));
+  function paintDraft() {
+    const d = getDraft(), box = $("draftWrap");
+    if (!d) { go("history"); return; }
+    const recs = d.ids.map(dRec), st = draftStats(recs);
+    const mins = Math.round(recs.reduce((a, r) => a + (r.dur || 0), 0) / 60000);
+    box.innerHTML = `<input id="draftName" type="text" value="${esc(d.name)}" aria-label="Draft name">
+      <div class="count">${recs.length} tracks${mins ? " · " + mins + " min" : ""} · ${st.rough ? `<span class="warn">${st.rough} rough ${st.rough === 1 ? "transition" : "transitions"}</span>` : "smooth all the way"}${st.jump ? ` · biggest jump ${st.jump > 0 ? "+" : ""}${st.jump} BPM` : ""}</div>
+      ${flowChart(recs)}
+      <div class="acts"><button class="btn" type="button" id="dCrate">Use as crate</button><button class="btn ghost" type="button" id="dQueue">Queue all</button><button class="btn ghost" type="button" id="dAdd">+ Add track at end</button><button class="btn ghost danger" type="button" id="dDel">Delete draft</button></div>
+      <p class="note">Drag <b>≡</b> to reorder. Tap <b>⋯</b> on a track to replace it, add a bridge after it, or branch from it.</p>
+      <div class="list" id="draftList"></div>`;
+    const list = $("draftList");
+    recs.forEach((t, i) => {
+      if (i > 0) {
+        const f = fit(recs[i - 1], t), tr = document.createElement("div");
+        tr.className = "dtrans" + (f.rough ? " rough" : "");
+        tr.innerHTML = `<span>${f.rough ? "⚠" : "↓"} ${esc(f.label)}</span>${f.rough ? `<button class="link" type="button" data-bridge="${i - 1}">Find a bridge</button>` : ""}`;
+        list.appendChild(tr);
+      }
+      const r = rowEl(t, null, setAnchor);
+      r.classList.add("crow"); r.dataset.id = t.id;
+      const h = document.createElement("span"); h.className = "drag"; h.textContent = "≡"; h.setAttribute("aria-label", "Drag to reorder"); r.prepend(h);
+      r.querySelector(".more-btn").onclick = () => draftMenu(i);
+      list.appendChild(r);
+    });
+    list.querySelectorAll("[data-bridge]").forEach(b => b.onclick = () => pickFor("insert", +b.dataset.bridge));
+    makeSortableOnce(list);
+    $("draftName").onchange = () => { d.name = $("draftName").value.trim() || d.name; d.at = Date.now(); saveDrafts(); };
+    $("dCrate").onclick = () => { crate = d.ids.slice(); saveCrate(); $("crateName").value = d.name.replace(/^Draft · /, "ASH//FLOW · ").slice(0, 100); go("crate"); window.scrollTo(0, 0); toast(`Crate set to this draft (${crate.length} tracks) — save it to Spotify below`); };
+    $("dQueue").onclick = () => { const have = new Set(appQ), ids = d.ids.filter(id => !(np && np.id === id) && !have.has(id)); if (ids.length) enqueueIds(ids, `Queued ${ids.length} tracks from the draft`); else toast("Everything here is already queued"); };
+    $("dAdd").onclick = () => pickFor("append", d.ids.length - 1);
+    const del = $("dDel");
+    del.onclick = () => {
+      if (!del.dataset.confirm) { del.dataset.confirm = "1"; del.textContent = "Tap again to delete"; setTimeout(() => { delete del.dataset.confirm; del.textContent = "Delete draft"; }, 3000); return; }
+      drafts = drafts.filter(x => x.id !== d.id); curDraft = null; saveDrafts(); go("history"); toast("Draft deleted");
+    };
+  }
+  let sortWired = new WeakSet();
+  function makeSortableOnce(list) { if (sortWired.has(list)) return; sortWired.add(list); makeSortable(list, ids => { const d = getDraft(); if (!d) return; d.ids = ids; d.at = Date.now(); saveDrafts(); paintDraft(); }); }
+  function draftMenu(i) {
+    const d = getDraft(), t = dRec(d.ids[i]), sh = $("sheet");
+    sh.innerHTML = `<div class="grab"></div><div class="sh-t">${esc(t.title)}</div><div class="sh-a">${esc(t.artist)} · ${t.key || "?"} · ${t.tempo || "–"} BPM · track ${i + 1} of ${d.ids.length}</div>
+      <button class="item" type="button" data-a="replace"><span>⇄</span>Replace — fits the tracks either side</button>
+      <button class="item" type="button" data-a="insert"><span>＋</span>${i < d.ids.length - 1 ? "Add a bridge after this" : "Add a track after this"}</button>
+      <button class="item" type="button" data-a="branch"><span>⑂</span>Branch from here — keep up to this, then continue</button>
+      <button class="item" type="button" data-a="remove"><span>✕</span>Remove from draft</button>
+      <button class="item" type="button" data-a="more"><span>⋯</span>More (play, queue, mix out of this…)</button>`;
+    sh.hidden = false; $("sheetBg").hidden = false;
+    sh.querySelectorAll("[data-a]").forEach(b => b.onclick = () => {
+      const a = b.dataset.a;
+      if (a === "replace") pickFor("replace", i);
+      else if (a === "insert") pickFor(i < d.ids.length - 1 ? "insert" : "append", i);
+      else if (a === "branch") { const cut = d.ids.length - (i + 1); d.ids = d.ids.slice(0, i + 1); d.at = Date.now(); saveDrafts(); paintDraft(); toast(cut ? `Branched — dropped the ${cut} after this` : "Branching from the last track"); pickFor("append", i); }
+      else if (a === "remove") { d.ids.splice(i, 1); d.at = Date.now(); saveDrafts(); closeMenu(); paintDraft(); }
+      else { closeMenu(); openMenu(t); }
+    });
+  }
+  // Candidates for a slot. replace: fit prev→t and t→next. insert: a bridge between i and i+1. append: continue from i.
+  function candidates(mode, i, n) {
+    const d = getDraft(), ids = d.ids, inDraft = new Set(ids);
+    const prev = mode === "replace" ? (i > 0 ? dRec(ids[i - 1]) : null) : dRec(ids[i]);
+    const next = mode === "replace" ? (i < ids.length - 1 ? dRec(ids[i + 1]) : null) : mode === "insert" ? dRec(ids[i + 1]) : null;
+    const was = mode === "replace" ? dRec(ids[i]) : prev;
+    const src = new Set([...(was.src || []), ...(was.crates || [])]), wg = gOf(was.id);
+    const target = mode === "insert" && prev.tempo && next.tempo ? (prev.tempo + next.tempo) / 2 : null;
+    const out = [];
+    for (const t of T) {
+      if (inDraft.has(t.id) || !t.key) continue;
+      const a = fit(prev, t), b = fit(t, next);
+      let sc = a.score + b.score;
+      if (target && t.tempo) sc += 0.5 * (1 - Math.min(Math.abs(t.tempo - target), 12) / 12);   // bridges sit between the two tempos
+      const g = gOf(t.id);
+      if ([...(t.src || []), ...(t.crates || [])].some(p => src.has(p))) sc += 0.35;
+      if (wg && g && g.f === wg.f) sc += 0.25;
+      out.push({ t, sc, a, b, rough: (prev && a.rough) || (next && b.rough) });
+    }
+    return out.sort((x, y) => x.rough - y.rough || y.sc - x.sc).slice(0, n);
+  }
+  function pickFor(mode, i) {
+    const d = getDraft(); if (!d) return;
+    const sh = $("sheet"), list = candidates(mode, i, 10);
+    const head = { replace: "Replace with…", insert: "Bridge between these two", append: "Continue with…" }[mode];
+    const sub = mode === "replace" ? `Fits the tracks either side of ${esc(dRec(d.ids[i]).title)}.` : mode === "insert" ? `From ${esc(dRec(d.ids[i]).title)} to ${esc(dRec(d.ids[i + 1]).title)}.` : `After ${esc(dRec(d.ids[i]).title)}.`;
+    sh.innerHTML = `<div class="grab"></div><div class="sh-t">${head}</div><div class="sh-a">${sub}</div>
+      ${mode === "append" ? `<button class="item" type="button" id="fill5"><span>⇣</span>Fill the next 5 for me</button>` : ""}
+      ${mode === "insert" ? `<button class="item" type="button" id="autoBridge"><span>⇢</span>Build a bridge for me (up to 4 tracks, smooth steps)</button>` : ""}
+      ${list.length ? list.map((x, k) => `<button class="item cand" type="button" data-k="${k}"><span class="hart" data-aid="${esc(x.t.id)}"></span><div class="cd"><div><i class="ck" style="background:${col(parseInt(x.t.key))}">${x.t.key}</i>${esc(x.t.title)}</div><small>${esc(x.t.artist)} · ${x.t.tempo || "–"} BPM${gOf(x.t.id) ? " · " + esc(famName(gOf(x.t.id).f)) : ""}</small><small class="${x.a.rough && mode !== "replace" || x.rough ? "warn" : "ok"}">${mode === "replace" ? (x.a.label ? "In: " + esc(x.a.label) : "") + (x.a.label && x.b.label ? " · " : "") + (x.b.label ? "Out: " + esc(x.b.label) : "") : mode === "insert" ? "In: " + esc(x.a.label) + " · Out: " + esc(x.b.label) : esc(x.a.label)}</small></div></button>`).join("") : '<p class="note">Nothing in your library fits here.</p>'}`;
+    sh.hidden = false; $("sheetBg").hidden = false; sh.scrollTop = 0;
+    sh.querySelectorAll(".hart").forEach(el => { if (art[el.dataset.aid]) paintArt(el, el.dataset.aid); else if (artObs) artObs.observe(el); });
+    sh.querySelectorAll(".cand").forEach(b => b.onclick = () => {
+      const x = list[+b.dataset.k];
+      if (mode === "replace") d.ids[i] = x.t.id; else d.ids.splice(i + 1, 0, x.t.id);
+      d.at = Date.now(); saveDrafts(); paintDraft();
+      if (mode === "append") pickFor("append", i + 1);   // keep going: offer what comes next
+      else { closeMenu(); toast((mode === "replace" ? "Replaced with " : "Added ") + x.t.title); }
+    });
+    const ab = $("autoBridge");
+    if (ab) ab.onclick = () => {
+      const next = dRec(d.ids[i + 1]), used = new Set(d.ids), chain = [];
+      let cur = dRec(d.ids[i]);
+      for (let k = 0; k < 4 && fit(cur, next).rough; k++) {
+        let best = null, bs = -1e9;
+        for (const t of T) {
+          if (used.has(t.id) || !t.key) continue;
+          const a = fit(cur, t); if (a.rough) continue;            // every step must be smooth
+          const b = fit(t, next);
+          const closer = cur.tempo && next.tempo && t.tempo ? Math.abs(cur.tempo - next.tempo) - Math.abs(t.tempo - next.tempo) : 0;
+          const sc = a.score + 1.5 * b.score + 0.15 * closer;
+          if (sc > bs) { bs = sc; best = t; }
+        }
+        if (!best) break;
+        chain.push(best.id); used.add(best.id); cur = best;
+      }
+      if (!chain.length) { toast("Couldn't find smooth steps between these two"); return; }
+      d.ids.splice(i + 1, 0, ...chain); d.at = Date.now(); saveDrafts(); closeMenu(); paintDraft();
+      toast(fit(cur, next).rough ? `Added ${chain.length} steps — the last hop is still rough` : `Bridged in ${chain.length} smooth ${chain.length === 1 ? "step" : "steps"}`);
+    };
+    const f5 = $("fill5");
+    if (f5) f5.onclick = () => {
+      let at = i, added = 0;
+      for (let k = 0; k < 5; k++) { const c = candidates("append", at, 1)[0]; if (!c) break; d.ids.splice(at + 1, 0, c.t.id); at++; added++; }
+      d.at = Date.now(); saveDrafts(); closeMenu(); paintDraft(); toast(added ? `Added ${added} tracks` : "Nothing more fits");
+    };
+  }
+  $("draftBack").onclick = () => go("history");
+  // Drafts list on the Flows tab.
+  function draftsHtml() {
+    if (!drafts.length) return "";
+    return `<div class="drafts"><div class="eyebrow">Your drafts</div>${drafts.map(d => { const recs = d.ids.map(dRec), st = draftStats(recs);
+      return `<button class="dchip" type="button" data-d="${esc(d.id)}"><b>${esc(d.name)}</b><span>${recs.length} tracks · ${st.rough ? st.rough + " rough" : "smooth"} · edited ${dayFmt.format(d.at)}</span></button>`; }).join("")}</div>`;
+  }
   // ---------- tabs + spotify button ----------
   function go(v, skipPaint) {
     document.querySelectorAll(".view").forEach(s => s.hidden = s.id !== "view-" + v);
-    const tabFor = v === "info" ? "more" : v === "browse" ? returnView : v === "match" ? matchReturn : v;
+    const tabFor = v === "info" ? "more" : v === "draft" ? "history" : v === "browse" ? returnView : v === "match" ? matchReturn : v;
     document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === tabFor));
     document.body.classList.toggle("on-playing", v === "playing");
     if (v === "playing") { paintPlaying(); paintQueue(); paintSuggest(); if (Spotify.connected() && Spotify.canPlay()) startPolling(); }
@@ -2056,6 +2216,7 @@
     if (v === "history") { paintHistory(); syncRecent(); }
     if (v === "playlists" && !skipPaint) paintPlaylists(true);
     if (v === "more") paintMore();
+    if (v === "draft") paintDraft();
     if (v !== "browse" && v !== "info" && v !== "match") { try { sessionStorage.setItem("kwb.view", v); } catch (e) {} }
   }
   (function swatches() {

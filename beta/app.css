@@ -530,7 +530,7 @@ pre.conn{white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--mono);fon
 
 /* Full-screen flow chart (2.14) */
 .fc-z{text-transform:none;letter-spacing:0;color:var(--accent,#ff5c8a)}
-.fchart:not(.fzc){cursor:zoom-in}
+.fchart[data-ses]:not([data-ses=""]){cursor:zoom-in}
 body.fz-open{overflow:hidden}
 .fz{position:fixed;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;padding:calc(env(safe-area-inset-top,0px) + 14px) 0 calc(env(safe-area-inset-bottom,0px) + 12px)}
 .fz[hidden]{display:none}
@@ -574,3 +574,23 @@ body.fz-open{overflow:hidden}
 .ahead .links{display:inline-flex;gap:14px;flex:none;white-space:nowrap}
 
 .hnone{font-size:12px;color:var(--muted);padding:2px 0}
+
+/* Flow drafts (2.21) */
+#draftName{font-size:18px;font-weight:700;background:transparent;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:4px 0;width:100%;color:var(--ink)}
+#draftWrap{display:grid;gap:12px}
+#draftWrap .warn,.sheet .warn{color:var(--warn)}
+.sheet .ok{color:var(--good)}
+.dtrans{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted);padding:3px 4px 3px 52px}
+.dtrans.rough{color:var(--warn)}
+.fchart .clash{fill:none;stroke:var(--warn);stroke-width:1.5}
+.drafts{display:grid;gap:6px;margin-bottom:14px}
+.dchip{display:grid;gap:2px;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px;color:var(--ink);cursor:pointer}
+.dchip span{font-size:12px;color:var(--muted)}
+.sheet .item.cand{align-items:center}
+.sheet .item.cand .hart{width:40px;height:40px;flex:none;border-radius:6px;background:var(--surface) center/cover no-repeat}
+.sheet .item.cand .cd{display:grid;gap:2px;min-width:0}
+.sheet .item.cand .cd>div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sheet .item.cand small{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sheet .item.cand .ck{font-style:normal;color:#fff;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:999px;margin-right:6px;display:inline-block;vertical-align:1px}
+.sheet .item.cand small.warn{color:var(--warn)}
+.sheet .item.cand small.ok{color:var(--good)}

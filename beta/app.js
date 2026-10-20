@@ -653,7 +653,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.18";
+  const APP_VERSION = "2.19";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1867,10 +1867,10 @@
     if (out.length) return out.sort((a, b) => exact(b) - exact(a) || b.sc - a.sc).slice(0, n);
     return widen(from, n, skip, rel);
   }
-  // Nothing close? Never leave the music to stop. Widen, but stay in the same world first:
-  // the same genre family, a shared Discogs style, or a shared playlist counts as "same world".
-  // Cost = 30 for leaving that world + 12 for a key change + BPM distance (half/double time costs 10 extra).
-  // So a drum & bass track at 172 in a compatible key beats a downtempo track at 83, which beats a clash.
+  // Nothing close? Never leave the music to stop. Fallback order, as Ash asked for:
+  // 1) tracks from the same playlists as the playing one (more shared playlists = closer), then the same
+  //    genre or Discogs style; 2) within that, the nearest BPM (half/double time counts as 10 BPM further);
+  // 3) then the key: compatible moves first, best move first.
   const tdist = (a, b) => !a || !b ? 40 : Math.min(Math.abs(a - b), Math.abs(a - 2 * b) + 10, Math.abs(2 * a - b) + 10);
   function widen(from, n, skip, rel) {
     const fg = gOf(from.id), fStyles = new Set(((fg && fg.s) || []).map(x => x.toLowerCase())), fSrc = new Set(from.src || []);
@@ -1880,11 +1880,13 @@
       const g = gOf(t.id);
       if (state.genres.length && (!g || !state.genres.includes(g.f))) continue;
       if (stayGenre && fg && (!g || g.f !== fg.f)) continue;
-      const world = (fg && g && (g.f === fg.f || (g.s || []).some(x => fStyles.has(x.toLowerCase())))) || (t.src || []).some(p => fSrc.has(p));
-      const m = rel[t.key] || "any", d = tdist(from.tempo, t.tempo);
-      pool.push({ t, m, cost: (world ? 0 : 30) + (m === "any" ? 12 : 0) + d - (MOVE_W[m] || 0) });
+      const shared = (t.src || []).filter(p => fSrc.has(p)).length;
+      const genreish = fg && g && (g.f === fg.f || (g.s || []).some(x => fStyles.has(x.toLowerCase())));
+      const m = rel[t.key] || "any";
+      pool.push({ t, m, world: shared ? 2 + shared : genreish ? 1 : 0, d: Math.round(tdist(from.tempo, t.tempo) / 2), k: MOVE_W[m] || 0 });
     }
-    return pool.sort((a, b) => a.cost - b.cost).slice(0, n).map(x => Object.assign(x, { sc: 0, wide: true }));
+    // BPM is compared in 2-BPM steps so the key decides between tracks that are practically the same tempo.
+    return pool.sort((a, b) => b.world - a.world || a.d - b.d || b.k - a.k).slice(0, n).map(x => Object.assign(x, { sc: 0, wide: true }));
   }
   function dirBonus(from, t, m, dt) {
     const toB = from.key.endsWith("A") && t.key.endsWith("B"), toA = from.key.endsWith("B") && t.key.endsWith("A");

@@ -265,6 +265,17 @@
 
   // ---------- genres ----------
   let genre = ls.get("kwb.genre", {}), genreDirty = false;
+  // One-time re-sort when the families change: re-map stored styles; anything that ended up in "Other" or
+  // wasn't found is looked up again (Discogs' broad genre now fills gaps).
+  if (ls.get("kwb.genreVer", 1) < FlowGenres.VERSION) {
+    for (const id in genre) {
+      const r = genre[id];
+      if (r.src === "discogs" && r.s && r.s.length) { r.f = FlowGenres.familyOf(r.s, r.g); if (r.f === "other" && !r.g) delete genre[id]; }
+      else if (r.src === "spotify" && r.s) r.f = FlowGenres.familyFromSpotify(r.s.map(x => x.toLowerCase())) || "other";
+      else delete genre[id];
+    }
+    ls.set("kwb.genre", genre); ls.set("kwb.genreVer", FlowGenres.VERSION);
+  }
   setInterval(() => { if (genreDirty) { genreDirty = false; ls.set("kwb.genre", genre); } }, 3000);
   const gOf = id => { const g = genre[id]; return g && g.f ? g : null; };
   const famName = f => (FlowGenres.FAM[f] || FlowGenres.FAM.other).name;
@@ -634,7 +645,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.11";
+  const APP_VERSION = "2.12";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------

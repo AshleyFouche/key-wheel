@@ -1,52 +1,70 @@
 // Genres for ASH//FLOW: fine Discogs styles per track, grouped into a handful of broad families.
 // Families do the filtering and suggesting; fine styles are for display and tie-breaking.
 (function () {
-  // Eight families get the eight validated chart colours (reference order); the rest share a neutral grey.
+  // Eight families get the eight validated chart colours (reference order); the rest share a neutral grey,
+  // but every family is still its own bucket for filtering and "Stay in genre".
+  const GREY = "#6f6a76";
   const FAMILIES = [
     { id: "house", name: "House", col: "#3987e5" },
-    { id: "techhouse", name: "Tech House", col: "#d95926" },
+    { id: "techno", name: "Techno", col: "#d95926" },
     { id: "deep", name: "Deep House", col: "#199e70" },
     { id: "minimal", name: "Minimal & Dub", col: "#c98500" },
     { id: "prog", name: "Progressive & Trance", col: "#d55181" },
-    { id: "down", name: "Downtempo & Leftfield", col: "#008300" },
-    { id: "techno", name: "Techno", col: "#9085e9" },
+    { id: "down", name: "Downtempo & Trip Hop", col: "#008300" },
+    { id: "dnb", name: "Drum & Bass", col: "#9085e9" },
     { id: "ukg", name: "UK Garage & Bass", col: "#e66767" },
-    { id: "breaks", name: "Breaks & Electro", col: "#6f6a76" },
-    { id: "dnb", name: "Drum & Bass", col: "#6f6a76" },
-    { id: "disco", name: "Disco & Funk", col: "#6f6a76" },
-    { id: "other", name: "Other", col: "#6f6a76" }
+    { id: "techhouse", name: "Tech House", col: GREY },
+    { id: "breaks", name: "Breaks & Electro", col: GREY },
+    { id: "disco", name: "Disco & Funk", col: GREY },
+    { id: "pop", name: "Pop", col: GREY },
+    { id: "rnb", name: "R&B & Soul", col: GREY },
+    { id: "hiphop", name: "Hip Hop", col: GREY },
+    { id: "afro", name: "Afro & Latin", col: GREY },
+    { id: "rock", name: "Rock", col: GREY },
+    { id: "other", name: "Other", col: GREY }
   ];
   const FAM = Object.fromEntries(FAMILIES.map(f => [f.id, f]));
 
   // Discogs style → family (lower-case keys).
   const STYLE = {};
   const put = (fam, list) => list.forEach(s => STYLE[s.toLowerCase()] = fam);
-  put("house", ["House", "Funky House", "Tribal House", "Hard House", "Garage House", "Italo House", "Ghetto House", "Hip-House", "Acid House", "Latin", "Electro House", "Dance-pop", "Euro House", "Vocal", "Jackin House", "Afro House", "Amapiano", "Ballroom", "Bass House", "Melodic House", "Organic House", "Lo-Fi House", "Piano House"]);
+  put("house", ["House", "Funky House", "Tribal House", "Hard House", "Garage House", "Italo House", "Ghetto House", "Hip-House", "Acid House", "Electro House", "Euro House", "Jackin House", "Bass House", "Melodic House", "Organic House", "Lo-Fi House", "Piano House", "Ballroom"]);
   put("deep", ["Deep House"]);
   put("techhouse", ["Tech House"]);
   put("techno", ["Techno", "Hard Techno", "Acid", "Industrial", "EBM", "Schranz", "Hardcore", "Gabber", "Happy Hardcore", "Hardstyle", "Detroit Techno", "Peak Time Techno", "Raw Techno", "Hypnotic Techno", "Melodic Techno"]);
   put("minimal", ["Minimal", "Minimal Techno", "Microhouse", "Dub Techno", "Glitch", "Clicks & Cuts"]);
   put("prog", ["Progressive House", "Progressive Trance", "Trance", "Psy-Trance", "Goa Trance", "Hard Trance", "Tech Trance", "Euro-Trance", "Balearic", "Dream House"]);
-  put("down", ["Downtempo", "Leftfield", "Ambient", "Abstract", "Trip Hop", "Experimental", "IDM", "Chillwave", "Electronica", "Dub", "Illbient", "Future Jazz", "Broken Beat", "Lo-Fi", "Synth-pop", "Indie Rock", "Neo Soul", "Instrumental"]);
+  put("down", ["Downtempo", "Trip Hop", "Leftfield", "Ambient", "Abstract", "Experimental", "IDM", "Chillwave", "Electronica", "Dub", "Illbient", "Future Jazz", "Broken Beat", "Lo-Fi", "Instrumental", "Nu Jazz", "Acid Jazz"]);
   put("ukg", ["UK Garage", "Speed Garage", "2-Step", "Bassline", "Dubstep", "Grime", "UK Funky", "Future Garage", "Bass Music", "Juke", "Footwork", "Garage"]);
   put("breaks", ["Breakbeat", "Breaks", "Electro", "Big Beat", "Nu Skool Breaks", "Miami Bass", "Freestyle", "Ghetto"]);
   put("dnb", ["Drum n Bass", "Jungle", "Liquid Funk", "Halftime", "Neurofunk", "Darkstep", "Breakcore"]);
-  put("disco", ["Disco", "Nu-Disco", "Italo-Disco", "Funk", "Boogie", "Soul", "Disco Polo", "Italodance", "Hi NRG", "Cosmic"]);
+  put("disco", ["Disco", "Nu-Disco", "Italo-Disco", "Funk", "Boogie", "Disco Polo", "Italodance", "Hi NRG", "Cosmic"]);
+  put("pop", ["Europop", "Dance-pop", "Synth-pop", "Electropop", "Vocal", "K-pop", "J-pop", "Ballad", "Teen Pop", "Indie Pop", "Bubblegum", "Pop Rock"]);
+  put("rnb", ["Contemporary R&B", "RnB/Swing", "Neo Soul", "Soul", "Gospel", "Rhythm & Blues", "Swingbeat", "New Jack Swing"]);
+  put("hiphop", ["Pop Rap", "Trap", "Boom Bap", "Conscious", "Gangsta", "Hardcore Hip-Hop", "Cloud Rap", "Thug Rap", "Grime Rap", "Drill", "Jazzy Hip-Hop", "Bass Music Rap"]);
+  put("afro", ["Afrobeat", "Afrobeats", "Amapiano", "Afro House", "Reggaeton", "Dancehall", "Latin", "Cumbia", "Baile Funk", "Kuduro", "Gqom", "Salsa", "Bossa Nova", "Samba", "Moombahton"]);
+  put("rock", ["Indie Rock", "Alternative Rock", "Punk", "Post-Punk", "New Wave", "Shoegaze", "Hard Rock", "Heavy Metal", "Garage Rock", "Psychedelic Rock", "Prog Rock", "Grunge", "Britpop", "Art Rock", "Krautrock", "Classic Rock", "Rock & Roll", "Emo", "Pop Punk"]);
+  // Discogs' broad genre, used when none of the fine styles say anything.
+  const BROAD = { "hip hop": "hiphop", "pop": "pop", "funk / soul": "rnb", "rock": "rock", "latin": "afro", "reggae": "other", "jazz": "other", "classical": "other", "stage & screen": "other", "folk, world, & country": "other", "blues": "rnb" };
 
-  // Pick a family from a style list: earlier styles count more.
-  function familyOf(styles) {
+  // Pick a family from a style list (earlier styles count more), falling back to the broad genre.
+  function familyOf(styles, broad) {
     const score = {};
     (styles || []).forEach((s, i) => { const f = STYLE[String(s).toLowerCase()]; if (f) score[f] = (score[f] || 0) + (4 - Math.min(i, 3)); });
     const best = Object.keys(score).sort((a, b) => score[b] - score[a])[0];
-    return best || "other";
+    if (best) return best;
+    for (const b of broad || []) { const f = BROAD[String(b).toLowerCase()]; if (f) return f; }
+    return "other";
   }
   // Spotify artist genres are free text ("minimal techno", "uk garage"): map by keyword, most specific first.
   function familyFromSpotify(genres) {
     const g = (genres || []).join(" | ").toLowerCase();
     if (!g) return null;
     const rules = [["deep house", "deep"], ["tech house", "techhouse"], ["minimal|microhouse|dub techno", "minimal"], ["drum and bass|jungle|liquid funk|neurofunk", "dnb"],
-      ["uk garage|bassline|dubstep|grime|bass music|uk funky|footwork", "ukg"], ["progressive|trance", "prog"], ["breakbeat|big beat|electro(?! house)", "breaks"],
-      ["techno|hard techno|acid", "techno"], ["disco|funk|boogie", "disco"], ["ambient|downtempo|trip hop|idm|electronica|leftfield|chill", "down"], ["house", "house"]];
+      ["uk garage|bassline|dubstep|grime|bass music|uk funky|footwork", "ukg"], ["progressive|trance", "prog"], ["trip hop|downtempo|ambient|idm|electronica|leftfield|chill|nu jazz", "down"],
+      ["afrobeat|amapiano|afro house|reggaeton|dancehall|latin|baile funk|gqom", "afro"], ["hip hop|rap|trap|drill", "hiphop"], ["r&b|rnb|soul|neo soul|new jack", "rnb"],
+      ["breakbeat|big beat|electro(?! house)", "breaks"], ["techno|hard techno|acid", "techno"], ["disco|funk|boogie", "disco"], ["house", "house"],
+      ["rock|indie|punk|metal|shoegaze|new wave|grunge|britpop", "rock"], ["pop", "pop"]];
     for (const [re, f] of rules) if (new RegExp(re).test(g)) return f;
     return "other";
   }
@@ -72,7 +90,7 @@
   function pick(results, track) {
     const ours = String(track.artist || "").split(/\s*,\s*/).map(norm).filter(Boolean);
     const wantsRemix = REMIX.test(track.title || "");
-    let ok = results.filter(r => artistOk(r, ours) && (r.style || []).length);
+    let ok = results.filter(r => artistOk(r, ours) && ((r.style || []).length || (r.genre || []).length));
     if (!wantsRemix) { const plain = ok.filter(r => !/\bremix(es)?\b/i.test(r.title || "")); if (plain.length) ok = plain; }
     return ok;
   }
@@ -98,7 +116,8 @@
     const count = {};
     ok.slice(0, 3).forEach((r, i) => (r.style || []).forEach(s => count[s] = (count[s] || 0) + (3 - i)));
     const styles = Object.keys(count).sort((a, b) => count[b] - count[a]).slice(0, 4);
-    return { s: styles, f: familyOf(styles), src: "discogs", rel: ok[0].title || "" };
+    const broad = ok[0].genre || [];
+    return { s: styles, g: broad, f: familyOf(styles, broad), src: "discogs", rel: ok[0].title || "" };
   }
   const artistCache = {};
   async function viaSpotify(t) {
@@ -135,7 +154,7 @@
   }
 
   window.FlowGenres = {
-    FAMILIES, FAM, familyOf, familyFromSpotify, baseTitle, pick,
+    FAMILIES, FAM, familyOf, familyFromSpotify, baseTitle, pick, VERSION: 2,
     init(c) { ctx = c; },
     start() { run(); }, stop() { stopReq = true; }, running: () => running, todoCount: () => todo().length
   };

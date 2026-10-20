@@ -607,3 +607,7 @@ body.fz-open{overflow:hidden}
 .sess.folded .acts{display:none}
 .sess.folded{padding-bottom:12px}
 .sess-h>div span{overflow:hidden;text-overflow:ellipsis}
+#newFlow{justify-self:start}
+.sess.pending{border-style:dashed}
+.sess.pending .sess-h{cursor:default}
+.sess.pending .sess-h span{white-space:normal}

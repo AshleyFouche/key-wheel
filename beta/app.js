@@ -653,7 +653,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.24";
+  const APP_VERSION = "2.25";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -793,7 +793,7 @@
   }
   $("logout").onclick = () => { Spotify.logout(); plCache = null; clearInterval(npTimer); np = null; paintNp(); paintSpotifyBtn(); paintMore(); toast("Disconnected from Spotify"); };
   $("backup").onclick = () => {
-    const data = { app: "key-wheel", saved: new Date().toISOString(), extra: ls.get("kwb.extra", []), history: ls.get("kwb.history", []), notes, kept: ls.get("kwb.kept", {}), crate, state: { key: state.key, on: state.on, dir: state.dir }, genre, genreVer: FlowGenres.VERSION, art, drafts: ls.get("kwb.drafts", []) };
+    const data = { app: "key-wheel", saved: new Date().toISOString(), extra: ls.get("kwb.extra", []), history: ls.get("kwb.history", []), notes, kept: ls.get("kwb.kept", {}), crate, state: { key: state.key, on: state.on, dir: state.dir }, genre, genreVer: FlowGenres.VERSION, art, drafts: ls.get("kwb.drafts", []), flowBreaks: ls.get("kwb.flowBreaks", []) };
     const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "ashflow-backup.json"; document.body.appendChild(a); a.click(); a.remove();
   };
@@ -810,6 +810,7 @@
         ls.set("kwb.genre", genre);
       }
       if (d.art) { Object.assign(art, d.art); ls.set("kwb.art", art); }
+      if (d.flowBreaks) ls.set("kwb.flowBreaks", [...new Set(ls.get("kwb.flowBreaks", []).concat(d.flowBreaks))].sort((a, b) => a - b));
       if (d.drafts) { const have = ls.get("kwb.drafts", []), ids = new Set(have.map(x => x.id)); ls.set("kwb.drafts", have.concat(d.drafts.filter(x => !ids.has(x.id)))); drafts = ls.get("kwb.drafts", []); }
       await loadLibrary(); crateOptions(); render(); paintMore();
       if (typeof paintGenreChips === "function") paintGenreChips();
@@ -1647,11 +1648,14 @@
     if (!Spotify.connected() || !Spotify.canPlay()) return;
     try { addHistory(await Spotify.recentlyPlayed()); } catch (e) {}
   }
+  // A new flow starts after an hour's break, or where you tapped "Start a new flow".
+  const flowBreaks = () => ls.get("kwb.flowBreaks", []);
+  function splitBetween(prevAt, at, br) { return at - prevAt > GAP || br.some(b => prevAt < b && b <= at); }
   function sessions() {
-    const h = ls.get("kwb.history", []), out = [];
+    const h = ls.get("kwb.history", []), out = [], br = flowBreaks();
     let cur = null;
     h.forEach(e => {
-      if (!cur || e.at - cur.last > GAP) { cur = { start: e.at, last: e.at, plays: [] }; out.push(cur); }
+      if (!cur || splitBetween(cur.last, e.at, br)) { cur = { start: e.at, last: e.at, plays: [] }; out.push(cur); }
       cur.plays.push(e); cur.last = e.at;
     });
     return out.reverse();
@@ -1798,6 +1802,13 @@
   function paintHistory() {
     const w = $("histWrap"), ss = sessions();
     w.innerHTML = draftsHtml(); w.querySelectorAll("[data-d]").forEach(b => b.onclick = () => { curDraft = b.dataset.d; saveDrafts(); go("draft"); window.scrollTo(0, 0); }); sessByKey.clear(); ss.forEach(ses => sessByKey.set(String(ses.start), ses));
+    { const br = flowBreaks(), lastB = br.length ? br[br.length - 1] : 0, lastPlay = ss.length ? ss[0].last : 0;
+      if (lastB && lastB > lastPlay && Date.now() - lastB < 12 * 3600e3) {
+        const pc = document.createElement("div"); pc.className = "sess pending";
+        pc.innerHTML = `<div class="sess-h"><div><b>New flow</b><span>Started ${timeFmt.format(lastB)} · it begins with the next track that plays for 30 seconds</span></div><button class="link" type="button" id="undoFlow">Undo</button></div>`;
+        w.appendChild(pc);
+        pc.querySelector("#undoFlow").onclick = () => { ls.set("kwb.flowBreaks", flowBreaks().slice(0, -1)); paintHistory(); toast("Carrying on with the previous flow"); };
+      } }
     if (!ss.length) { w.innerHTML += '<p class="note">Nothing yet. Play some tracks through Spotify (from ASH//FLOW or Spotify itself) and they\'ll appear here once each has played for 30 seconds.</p>'; return; }
     ss.forEach((ses, i) => {
       const key = String(ses.start);
@@ -1864,7 +1875,8 @@
   }
   function playedThisFlow(onlyPlayed) {
     const h = ls.get("kwb.history", []), out = new Set(onlyPlayed ? [] : Object.keys(started).filter(k => Date.now() - started[k] < 3 * 3600e3));
-    for (let i = h.length - 1; i >= 0; i--) { if (i < h.length - 1 && h[i + 1].at - h[i].at > GAP) break; if (Date.now() - h[i].at > 8 * 3600e3) break; out.add(h[i].id); }
+    const br = flowBreaks();
+    for (let i = h.length - 1; i >= 0; i--) { if (i < h.length - 1 && splitBetween(h[i].at, h[i + 1].at, br)) break; if (Date.now() - h[i].at > 8 * 3600e3) break; out.add(h[i].id); }
     return out;
   }
   // Higher is better. Hooks for set direction and transition memory.
@@ -2298,6 +2310,11 @@
     };
   }
   $("draftBack").onclick = () => go("history");
+  $("newFlow").onclick = () => {
+    const br = flowBreaks().filter(b => Date.now() - b < 90 * 864e5); br.push(Date.now()); ls.set("kwb.flowBreaks", br);
+    expInit = false; expSess.clear(); paintHistory(); window.scrollTo(0, 0);
+    toast("New flow started — it begins with the next track you play");
+  };
   // Drafts list on the Flows tab.
   function draftsHtml() {
     if (!drafts.length) return "";

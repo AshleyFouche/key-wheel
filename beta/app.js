@@ -783,7 +783,7 @@
   }
   $("logout").onclick = () => { Spotify.logout(); plCache = null; clearInterval(npTimer); np = null; paintNp(); paintSpotifyBtn(); paintMore(); toast("Disconnected from Spotify"); };
   $("backup").onclick = () => {
-    const data = { app: "key-wheel", saved: new Date().toISOString(), extra: ls.get("kwb.extra", []), history: ls.get("kwb.history", []), notes, kept: ls.get("kwb.kept", {}), crate, state: { key: state.key, on: state.on, dir: state.dir }, genre, genreVer: FlowGenres.VERSION, art };
+    const data = { app: "key-wheel", saved: new Date().toISOString(), extra: ls.get("kwb.extra", []), history: ls.get("kwb.history", []), notes, kept: ls.get("kwb.kept", {}), crate, state: { key: state.key, on: state.on, dir: state.dir }, genre, genreVer: FlowGenres.VERSION, art, drafts: ls.get("kwb.drafts", []) };
     const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "ashflow-backup.json"; document.body.appendChild(a); a.click(); a.remove();
   };
@@ -800,6 +800,7 @@
         ls.set("kwb.genre", genre);
       }
       if (d.art) { Object.assign(art, d.art); ls.set("kwb.art", art); }
+      if (d.drafts) { const have = ls.get("kwb.drafts", []), ids = new Set(have.map(x => x.id)); ls.set("kwb.drafts", have.concat(d.drafts.filter(x => !ids.has(x.id)))); drafts = ls.get("kwb.drafts", []); }
       await loadLibrary(); crateOptions(); render(); paintMore();
       if (typeof paintGenreChips === "function") paintGenreChips();
       toast(gN ? `Backup restored · ${gN.toLocaleString()} genres added` : "Backup restored");

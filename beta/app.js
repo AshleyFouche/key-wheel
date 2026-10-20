@@ -156,11 +156,12 @@
     const a = $("anchor");
     if (state.anchor) {
       const t = state.anchor;
-      a.innerHTML = `<div class="ahead"><span class="eyebrow">Mixing out of</span><button class="link" type="button" id="all">All tracks</button></div><span class="t">${esc(t.title)}</span>
-        <span class="m">${esc(t.artist)} · ${t.key} ${NAMES[t.key]} · ${t.tempo || "–"} BPM</span>${whereHtml(t)}${noteHtml(t.id)}
+      a.innerHTML = `<div class="ahead"><span class="eyebrow">Mixing out of</span><button class="link" type="button" id="all">All tracks</button></div><div class="a-main"><span class="art a-art" data-aid="${esc(t.id)}"></span><div class="a-txt"><span class="t">${esc(t.title)}</span>
+        <span class="m">${esc(t.artist)} · ${t.key} ${NAMES[t.key]} · ${t.tempo || "–"} BPM</span>${gOf(t.id) ? `<span class="a-g"><i style="background:${FlowGenres.FAM[gOf(t.id).f].col}"></i>${esc(famName(gOf(t.id).f))}${(() => { const fn = famName(gOf(t.id).f).toLowerCase(), st = (gOf(t.id).s || []).filter(x => x.toLowerCase() !== fn).slice(0, 2); return st.length ? ` · <span class="sub">${esc(st.join(", "))}</span>` : ""; })()}</span>` : ""}</div></div>${whereHtml(t)}${noteHtml(t.id)}
         <span class="acts"><button class="btn ghost" type="button" id="aAdd">${crate.includes(t.id) ? "In crate ✓" : "+ Crate"}</button>${state.trail.length > 1 ? '<button class="btn ghost" type="button" id="back1">‹ Back one</button>' : ""}<button class="btn ghost" type="button" id="clr">${state.trail.length > 1 ? "Clear thread" : "Clear track"}</button></span>`;
       $("clr").onclick = () => { state.trail = []; state.anchor = null; $("tmin").value = ""; $("tmax").value = ""; saveState(); render(); };
       $("aAdd").onclick = () => { toggleCrate(t.id); render(); };
+      { const ae = a.querySelector(".a-art"); if (art[t.id]) paintArt(ae, t.id); else if (t.art) { noteArt(t.id, t.art); paintArt(ae, t.id); } else if (artObs) artObs.observe(ae); }
       const b1 = $("back1");
       if (b1) b1.onclick = () => { state.trail.pop(); setAnchor(state.trail[state.trail.length - 1], true); };
     } else if (state.key) {
@@ -173,7 +174,7 @@
     const all = $("all"); if (all) all.onclick = showAll;
     if (state.trail.length > 1) {
       const tr = document.createElement("div"); tr.className = "trail";
-      tr.innerHTML = '<div class="ahead"><span class="eyebrow">Your thread so far</span><button class="link" type="button" id="pathCrate">Save as crate</button></div>';
+      tr.innerHTML = '<div class="ahead"><span class="eyebrow">Your thread so far</span><span class="links"><button class="link" type="button" id="pathQueue">Queue thread</button><button class="link" type="button" id="pathCrate">Save as crate</button></span></div>';
       const ol = document.createElement("ol");
       state.trail.forEach((t, i) => {
         const li = document.createElement("li"), b = document.createElement("button");
@@ -183,6 +184,13 @@
         li.appendChild(b); ol.appendChild(li);
       });
       tr.appendChild(ol); a.appendChild(tr);
+      $("pathQueue").onclick = () => {
+        // In thread order; skip what's playing now and anything already waiting in the queue.
+        const have = new Set(appQ), ids = [];
+        state.trail.forEach(t => { if (!(np && np.id === t.id) && !have.has(t.id)) { have.add(t.id); ids.push(t.id); } });
+        if (!ids.length) { toast("Everything in your thread is already playing or queued"); return; }
+        enqueueIds(ids, `Queued ${ids.length} ${ids.length === 1 ? "track" : "tracks"} from your thread`);
+      };
       $("pathCrate").onclick = () => {
         crate = [...new Set(state.trail.map(t => t.id))]; saveCrate();
         const first = state.trail[0], last = state.trail[state.trail.length - 1];
@@ -645,7 +653,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.14";
+  const APP_VERSION = "2.15";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------

@@ -653,7 +653,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.17";
+  const APP_VERSION = "2.18";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1867,22 +1867,24 @@
     if (out.length) return out.sort((a, b) => exact(b) - exact(a) || b.sc - a.sc).slice(0, n);
     return widen(from, n, skip, rel);
   }
-  // Nothing close? Never leave the music to stop. Widen step by step:
-  // 1) a compatible key at half or double time (e.g. 165 → ~82), 2) a compatible key at the nearest BPM,
-  // 3) the nearest BPM in any key. Same genre is preferred at each step.
-  const tdist = (a, b) => !a || !b ? 99 : Math.min(Math.abs(a - b), Math.abs(a - 2 * b), Math.abs(2 * a - b));
+  // Nothing close? Never leave the music to stop. Widen, but stay in the same world first:
+  // the same genre family, a shared Discogs style, or a shared playlist counts as "same world".
+  // Cost = 30 for leaving that world + 12 for a key change + BPM distance (half/double time costs 10 extra).
+  // So a drum & bass track at 172 in a compatible key beats a downtempo track at 83, which beats a clash.
+  const tdist = (a, b) => !a || !b ? 40 : Math.min(Math.abs(a - b), Math.abs(a - 2 * b) + 10, Math.abs(2 * a - b) + 10);
   function widen(from, n, skip, rel) {
-    const fg = gOf(from.id), pool = [];
+    const fg = gOf(from.id), fStyles = new Set(((fg && fg.s) || []).map(x => x.toLowerCase())), fSrc = new Set(from.src || []);
+    const pool = [];
     for (const t of T) {
       if (skip.has(t.id) || !t.key) continue;
       const g = gOf(t.id);
       if (state.genres.length && (!g || !state.genres.includes(g.f))) continue;
       if (stayGenre && fg && (!g || g.f !== fg.f)) continue;
-      pool.push({ t, m: rel[t.key] || "any", d: tdist(from.tempo, t.tempo), sameG: fg && g && g.f === fg.f ? 1 : 0 });
+      const world = (fg && g && (g.f === fg.f || (g.s || []).some(x => fStyles.has(x.toLowerCase())))) || (t.src || []).some(p => fSrc.has(p));
+      const m = rel[t.key] || "any", d = tdist(from.tempo, t.tempo);
+      pool.push({ t, m, cost: (world ? 0 : 30) + (m === "any" ? 12 : 0) + d - (MOVE_W[m] || 0) });
     }
-    const tier = x => x.m !== "any" && x.d <= 8 ? 3 : x.m !== "any" ? 2 : x.d <= 8 ? 1 : 0;
-    return pool.sort((a, b) => tier(b) - tier(a) || a.d - b.d || b.sameG - a.sameG || (MOVE_W[b.m] || 0) - (MOVE_W[a.m] || 0))
-      .slice(0, n).map(x => Object.assign(x, { sc: 0, wide: true }));
+    return pool.sort((a, b) => a.cost - b.cost).slice(0, n).map(x => Object.assign(x, { sc: 0, wide: true }));
   }
   function dirBonus(from, t, m, dt) {
     const toB = from.key.endsWith("A") && t.key.endsWith("B"), toA = from.key.endsWith("B") && t.key.endsWith("A");
@@ -2011,7 +2013,7 @@
     const sug = suggest(cur, 6);
     if (!sug.length) { box.innerHTML = '<p class="note">No close matches in your library.</p>'; return; }
     const d = DIRS.find(d => d.id === state.dir);
-    $("sugNote").textContent = (sug[0].wide ? "No close matches, so these are the nearest fits: half or double time, or the closest BPM. " : "") + (ref.fallback ? `This track has no key yet, so these follow “${cur.title}”, the last one that did. ` : "") +
+    $("sugNote").textContent = (sug[0].wide ? "No close matches, so these are the nearest fits, staying in the same genre or playlists where possible. " : "") + (ref.fallback ? `This track has no key yet, so these follow “${cur.title}”, the last one that did. ` : "") +
       (state.dir === "any" ? (ref.fallback || sug[0].wide ? "" : "Best matches from what's playing, by key and BPM.") : `Leaning ${d.name.toLowerCase()} ${d.sym} — change it on the Wheel tab.`) + " Swipe right to queue.";
     sug.forEach(x => {
       const r = rowEl(x.t, null, setAnchor, cur);

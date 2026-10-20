@@ -97,9 +97,12 @@
       ...opts, headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json", ...(opts.headers || {}) }
     });
     if (r.status === 429) {
-      const wait = parseInt(r.headers.get("Retry-After") || "2", 10);
-      await new Promise(res => setTimeout(res, Math.min(wait, 10) * 1000));
-      return api(path, opts);
+      // Spotify is rate-limiting. Short waits are retried a few times; a long one fails fast instead of hanging.
+      const wait = parseInt(r.headers.get("Retry-After") || "2", 10), tries = (opts._tries || 0);
+      logIt(opts, path, 429, "rate limited, retry after " + wait + "s");
+      if (wait > 30 || tries >= 3) { const e = new Error("Spotify is limiting requests (try again in " + (wait > 90 ? Math.round(wait / 60) + " min" : wait + " s") + ")"); e.status = 429; e.code = "rate"; throw e; }
+      await new Promise(res => setTimeout(res, Math.max(1, wait) * 1000));
+      return api(path, Object.assign({}, opts, { _tries: tries + 1 }));
     }
     logIt(opts, path, r.status, "");
     if (r.status === 401) { store.clear(); const e = new Error("Spotify sign-in expired"); e.code = "auth"; throw e; }

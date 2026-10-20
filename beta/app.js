@@ -291,7 +291,7 @@
   function genreStatus(msg) {
     const st = $("gStatus"); if (!st) return;
     const total = T.length, done = T.filter(t => genre[t.id]).length, withG = T.filter(t => gOf(t.id)).length;
-    st.textContent = (msg ? msg + " " : "") + `${done.toLocaleString()} of ${total.toLocaleString()} tracks checked · ${withG.toLocaleString()} with a genre` + (FlowGenres.running() ? " · fetching…" : "");
+    st.textContent = (msg ? msg + " " : "") + `${done.toLocaleString()} of ${total.toLocaleString()} tracks checked · ${withG.toLocaleString()} with a genre` + (FlowGenres.running() ? " · fetching…" : "") + (FlowGenres.health().lastErr && !msg ? " · " + FlowGenres.health().lastErr : "");
     $("gRun").textContent = FlowGenres.running() ? "Pause" : (done < total ? (done ? "Resume fetching" : "Fetch genres") : "Check new tracks");
     if (Date.now() - genreTick > 4000) { genreTick = Date.now(); paintFamCounts(); paintGenreChips(); }
   }
@@ -653,7 +653,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.23";
+  const APP_VERSION = "2.24";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -756,6 +756,8 @@
         lines.push(`  wheel genre filter: ${state.genres.length ? state.genres.map(famName).join(", ") : "off"} · stay in genre: ${stayGenre ? "on" : "off"} · direction: ${state.dir}`);
       }
     } catch (e) { lines.push("MIX CHECK failed: " + e.message); }
+    { const h = FlowGenres.health(), done = T.filter(t => genre[t.id]).length;
+      lines.push(`GENRES: ${done} of ${T.length} checked · ${h.running ? "running" : "not running"} · switched ${ls.get("kwb.genreOn", false) ? "on" : "off"}${h.lastAt ? " · last progress " + time(h.lastAt) : ""}${h.skipped ? " · " + h.skipped + " skipped this session" : ""}${h.lastErr ? " · " + h.lastErr : ""}`); }
     const log = Spotify.log();
     lines.push("RECENT COMMANDS (newest last): " + (log.length ? "" : "none yet"));
     log.forEach(l => lines.push(`  ${time(l.at)}  ${l.m} ${l.p}  →  ${l.s}${l.msg ? " " + l.msg : ""}`));
@@ -767,6 +769,14 @@
   // ---------- genres: More-tab controls ----------
   try { $("dgToken").value = localStorage.getItem("kwb.discogsToken") || ""; } catch (e) {}
   $("dgToken").onchange = () => { try { localStorage.setItem("kwb.discogsToken", $("dgToken").value.trim()); } catch (e) {} };
+  // Watchdog: if fetching is switched on but nothing has moved for 2 minutes (or it stopped while the app was
+  // in the background), start it again. Also restart when you come back to the app.
+  setInterval(() => {
+    if (!ls.get("kwb.genreOn", false) || document.visibilityState !== "visible") return;
+    const h = FlowGenres.health();
+    if (h.running && Date.now() - h.lastAt > 120000) { FlowGenres.kick(); genreStatus(null); }
+  }, 30000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && ls.get("kwb.genreOn", false)) setTimeout(() => { FlowGenres.start(); genreStatus(null); }, 2000); });
   $("gRun").onclick = () => {
     if (FlowGenres.running()) { FlowGenres.stop(); ls.set("kwb.genreOn", false); $("gStatus").textContent = "Pausing after this track…"; return; }
     try { localStorage.setItem("kwb.discogsToken", $("dgToken").value.trim()); } catch (e) {}

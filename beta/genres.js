@@ -96,15 +96,30 @@
   }
 
   // ---- the background job ----
-  let ctx = null, running = false, stopReq = false;
+  let ctx = null, running = false, stopReq = false, runId = 0, lastAt = 0, lastErr = "";
   const wait = ms => new Promise(r => setTimeout(r, ms));
-  async function discogs(token, params) {
+  // Never wait forever: a request that hangs (common when iOS pauses the app mid-request) gives up after 15 s.
+  async function fetchT(url, opts, ms = 15000) {
+    const ac = "AbortController" in window ? new AbortController() : null;
+    const t = setTimeout(() => ac && ac.abort(), ms);
+    try { return await fetch(url, Object.assign({}, opts, ac ? { signal: ac.signal } : {})); }
+    finally { clearTimeout(t); }
+  }
+  async function discogs(token, params, tries = 0) {
     const u = "https://api.discogs.com/database/search?" + new URLSearchParams(Object.assign({ type: "release", per_page: "8" }, params));
     let r;
-    try { r = await fetch(u, { headers: { Authorization: "Discogs token=" + token } }); }
-    catch (e) { const x = new Error("Discogs couldn't be reached"); x.code = "net"; throw x; }
+    try { r = await fetchT(u, { headers: { Authorization: "Discogs token=" + token } }); }
+    catch (e) {
+      if (e && e.name === "AbortError") { if (tries < 1) return discogs(token, params, tries + 1); const x = new Error("Discogs was too slow"); x.code = "slow"; throw x; }
+      if (tries < 2) { await wait(3000); return discogs(token, params, tries + 1); }
+      const x = new Error("Discogs couldn't be reached"); x.code = "net"; throw x;
+    }
     if (r.status === 401) { const x = new Error("Discogs didn't accept the token"); x.code = "token"; throw x; }
-    if (r.status === 429) { await wait(8000); return discogs(token, params); }
+    if (r.status === 429) {
+      // Slow down rather than retrying forever (two devices sharing one token can trip this).
+      if (tries < 4) { lastErr = "Discogs asked to slow down"; await wait(10000 * (tries + 1)); return discogs(token, params, tries + 1); }
+      const x = new Error("Discogs is limiting requests"); x.code = "net"; throw x;
+    }
     if (!r.ok) return [];
     return (await r.json()).results || [];
   }
@@ -120,16 +135,17 @@
     return { s: styles, g: broad, f: familyOf(styles, broad), src: "discogs", rel: ok[0].title || "" };
   }
   const artistCache = {};
+  // Spotify fallback. Returns undefined (not null) when Spotify couldn't be asked, so the track is tried again later.
+  let spCoolUntil = 0;   // after Spotify says "slow down", leave it alone for 10 minutes
   async function viaSpotify(t) {
-    if (!ctx.Spotify.connected()) return null;
+    if (!ctx.Spotify.connected() || Date.now() < spCoolUntil) return undefined;
     try {
       const ids = await ctx.Spotify.trackArtistIds(t.id); if (!ids.length) return null;
       let g = artistCache[ids[0]]; if (!g) { g = artistCache[ids[0]] = await ctx.Spotify.artistGenres(ids[0]); }
       const f = familyFromSpotify(g); if (!f) return null;
       return { s: g.slice(0, 3).map(x => x.replace(/\b\w/g, c => c.toUpperCase())), f, src: "spotify" };
-    } catch (e) { return null; }
+    } catch (e) { if (e.code === "rate" || e.status === 429) spCoolUntil = Date.now() + 600000; lastErr = "Spotify fallback paused: " + e.message; return undefined; }
   }
-
   function todo() {
     const done = ctx.store(), seen = new Set(), out = [];
     // Tracks you're most likely to look at first: recent plays and the crate, then everything else.
@@ -137,25 +153,38 @@
     first.concat(ctx.allTracks().map(t => t.id)).forEach(id => { if (!seen.has(id) && !done[id]) { seen.add(id); const t = ctx.track(id); if (t) out.push(t); } });
     return out;
   }
+  const skipped = new Set();   // tracks that timed out this session; tried again next time the app opens
   async function run() {
-    if (running) return; running = true; stopReq = false;
-    const token = ctx.token();
+    if (running) return; running = true; stopReq = false; lastAt = Date.now();
+    const me = ++runId, token = ctx.token();
     try {
-      const list = todo();
-      for (let i = 0; i < list.length && !stopReq; i++) {
+      const list = todo().filter(t => !skipped.has(t.id));
+      for (let i = 0; i < list.length && !stopReq && me === runId; i++) {
         const t = list[i];
-        let g = null;
-        if (token) { try { g = await viaDiscogs(token, t); } catch (e) { if (e.code === "token" || e.code === "net") { ctx.status(e.message + ". Paused."); break; } } }
-        if (!g) g = await viaSpotify(t);
-        ctx.save(t.id, g || { s: [], f: null, src: "none" });
+        // One track gets at most 60 s in total, so a single stuck lookup can't stall the whole job.
+        const one = (async () => {
+          let g = null;
+          if (token) { try { g = await viaDiscogs(token, t); } catch (e) { if (e.code === "token" || e.code === "net") { lastErr = e.message; return { stop: e.message }; } if (e.code === "slow") { lastErr = e.message + " for " + t.title + "; skipped for now"; return { retry: true }; } } }
+          if (!g) { const sp = await viaSpotify(t); if (sp === undefined) return { g: { s: [], f: null, src: "none", noSp: true } }; g = sp; }
+          return { g };
+        })();
+        const res = await Promise.race([one, wait(60000).then(() => ({ timeout: true }))]);
+        if (me !== runId) return;
+        if (res.stop) { ctx.status(res.stop + ". Paused — tap Resume to try again."); break; }
+        if (res.timeout || res.retry) { skipped.add(t.id); lastErr = res.timeout ? "A lookup took too long; skipped " + t.title : lastErr; }
+        else { ctx.save(t.id, res.g || { s: [], f: null, src: "none" }); lastErr = ""; }
+        lastAt = Date.now();
         ctx.status(null);
       }
-    } finally { running = false; ctx.status(null); }
+    } finally { if (me === runId) { running = false; ctx.status(null); } }
   }
-
+  // If the job has made no progress for 2 minutes, drop it and start a fresh one.
+  function kick() { runId++; running = false; stopReq = false; run(); }
   window.FlowGenres = {
     FAMILIES, FAM, familyOf, familyFromSpotify, baseTitle, pick, VERSION: 2,
     init(c) { ctx = c; },
-    start() { run(); }, stop() { stopReq = true; }, running: () => running, todoCount: () => todo().length
+    start() { if (running && Date.now() - lastAt > 120000) kick(); else run(); }, stop() { stopReq = true; runId++; running = false; },
+    running: () => running, todoCount: () => todo().length, kick,
+    health: () => ({ running, lastAt, lastErr, skipped: skipped.size })
   };
 })();

@@ -653,7 +653,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.19";
+  const APP_VERSION = "2.20";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -742,6 +742,20 @@
         lines.push("APP UP NEXT:     " + (appQ.slice(0, 5).map(id => recOf(id, qMeta.get(id)).title).join(" · ") || "nothing"));
       } catch (e) {}
     }
+    // Why suggestions look the way they do, for the track being mixed out of.
+    try {
+      const ref = mixRef(), cur = ref.rec;
+      if (cur && cur.key) {
+        const rel = relations(cur.key), started3 = playedThisFlow(), played = playedThisFlow(true), src = new Set([...(cur.src || []), ...(cur.crates || [])]);
+        const mates = T.filter(t => t.id !== cur.id && [...(t.src || []), ...(t.crates || [])].some(p => src.has(p)));
+        const close = T.filter(t => t.id !== cur.id && rel[t.key] && (!cur.tempo || !t.tempo || Math.abs(t.tempo - cur.tempo) <= 8));
+        const g = gOf(cur.id);
+        lines.push(`MIX CHECK: "${cur.title}" ${cur.key} ${cur.tempo || "?"} BPM · genre ${g ? famName(g.f) : "none yet"} · playlists: ${[...(cur.src || []), ...(cur.crates || [])].map(p => PL[p] || "…" + p.slice(-6)).join(", ") || "none known"}`);
+        lines.push(`  same playlists: ${mates.length} tracks (${mates.filter(t => played.has(t.id)).length} played this flow, ${mates.filter(t => started3.has(t.id) && !played.has(t.id)).length} only started/skipped)`);
+        lines.push(`  compatible key within 8 BPM: ${close.length} (${close.filter(t => played.has(t.id)).length} played, ${close.filter(t => started3.has(t.id) && !played.has(t.id)).length} only started/skipped)`);
+        lines.push(`  wheel genre filter: ${state.genres.length ? state.genres.map(famName).join(", ") : "off"} · stay in genre: ${stayGenre ? "on" : "off"} · direction: ${state.dir}`);
+      }
+    } catch (e) { lines.push("MIX CHECK failed: " + e.message); }
     const log = Spotify.log();
     lines.push("RECENT COMMANDS (newest last): " + (log.length ? "" : "none yet"));
     log.forEach(l => lines.push(`  ${time(l.at)}  ${l.m} ${l.p}  →  ${l.s}${l.msg ? " " + l.msg : ""}`));
@@ -1824,8 +1838,8 @@
     for (const k in started) if (now - started[k] > 3 * 3600e3) delete started[k];
     ls.set("kwb.started", started);
   }
-  function playedThisFlow() {
-    const h = ls.get("kwb.history", []), out = new Set(Object.keys(started).filter(k => Date.now() - started[k] < 3 * 3600e3));
+  function playedThisFlow(onlyPlayed) {
+    const h = ls.get("kwb.history", []), out = new Set(onlyPlayed ? [] : Object.keys(started).filter(k => Date.now() - started[k] < 3 * 3600e3));
     for (let i = h.length - 1; i >= 0; i--) { if (i < h.length - 1 && h[i + 1].at - h[i].at > GAP) break; if (Date.now() - h[i].at > 8 * 3600e3) break; out.add(h[i].id); }
     return out;
   }
@@ -1865,7 +1879,10 @@
       return ex && same ? 3 : same && fg && g ? 2 : ex ? 1 : 0;
     };
     if (out.length) return out.sort((a, b) => exact(b) - exact(a) || b.sc - a.sc).slice(0, n);
-    return widen(from, n, skip, rel);
+    // The fallback only leaves out what really played (30 s or more) this flow — not tracks that were
+    // merely started or skipped past — so a well-used playlist doesn't look empty.
+    const hard = playedThisFlow(true); hard.add(from.id); if (handed) hard.add(handed); appQ.forEach(id => hard.add(id));
+    return widen(from, n, hard, rel);
   }
   // Nothing close? Never leave the music to stop. Fallback order, as Ash asked for:
   // 1) tracks from the same playlists as the playing one (more shared playlists = closer), then the same
@@ -1873,14 +1890,14 @@
   // 3) then the key: compatible moves first, best move first.
   const tdist = (a, b) => !a || !b ? 40 : Math.min(Math.abs(a - b), Math.abs(a - 2 * b) + 10, Math.abs(2 * a - b) + 10);
   function widen(from, n, skip, rel) {
-    const fg = gOf(from.id), fStyles = new Set(((fg && fg.s) || []).map(x => x.toLowerCase())), fSrc = new Set(from.src || []);
+    const fg = gOf(from.id), fStyles = new Set(((fg && fg.s) || []).map(x => x.toLowerCase())), fSrc = new Set([...(from.src || []), ...(from.crates || [])]);
     const pool = [];
     for (const t of T) {
       if (skip.has(t.id) || !t.key) continue;
       const g = gOf(t.id);
       if (state.genres.length && (!g || !state.genres.includes(g.f))) continue;
       if (stayGenre && fg && (!g || g.f !== fg.f)) continue;
-      const shared = (t.src || []).filter(p => fSrc.has(p)).length;
+      const shared = [...(t.src || []), ...(t.crates || [])].filter(p => fSrc.has(p)).length;
       const genreish = fg && g && (g.f === fg.f || (g.s || []).some(x => fStyles.has(x.toLowerCase())));
       const m = rel[t.key] || "any";
       pool.push({ t, m, world: shared ? 2 + shared : genreish ? 1 : 0, d: Math.round(tdist(from.tempo, t.tempo) / 2), k: MOVE_W[m] || 0 });

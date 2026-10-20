@@ -245,10 +245,13 @@
   setInterval(() => { if (artDirty) { artDirty = false; ls.set("kwb.art", art); } }, 4000);
   const artQ = [], artTried = new Set(); let artBusy = 0;
   function artPump() {
-    while (artBusy < 2 && artQ.length) {
+    // Gently: one artwork lookup at a time, a few a second, and none while Spotify says it's busy,
+    // so artwork never eats into the requests that control playback or load playlists.
+    if (Spotify.cooling()) { setTimeout(artPump, 30000); return; }
+    while (artBusy < 1 && artQ.length) {
       const { id, el } = artQ.shift(); if (art[id]) { paintArt(el, id); continue; }
       artBusy++;
-      Spotify.trackArt(id).then(u => { noteArt(id, u); paintArt(el, id); }).catch(() => {}).finally(() => { artBusy--; setTimeout(artPump, 120); });
+      Spotify.trackArt(id).then(u => { noteArt(id, u); paintArt(el, id); }).catch(e => { if (e.code === "rate") { artQ.unshift({ id, el }); } }).finally(() => { artBusy--; setTimeout(artPump, 350); });
     }
   }
   const paintArt = (el, id) => { if (art[id] && el) { el.style.backgroundImage = `url("${art[id]}")`; el.classList.add("has"); } };
@@ -264,8 +267,9 @@
     try {
       const me = await Spotify.me(), pls = (await Spotify.myPlaylists()).filter(p => p && p.owner && p.owner.id === me.id);
       for (const p of pls) {
+        if (Spotify.cooling()) await new Promise(r => setTimeout(r, 30000));
         try { (await Spotify.playlistTracks(p.id)).forEach(t => noteArt(t.id, t.art)); } catch (e) {}
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, 1200));
       }
       document.querySelectorAll(".row .art:not(.has)").forEach(el => paintArt(el, el.dataset.aid));
     } catch (e) {}
@@ -516,7 +520,10 @@
     if (!Spotify.connected()) { selEx.innerHTML = '<option value="">Connect Spotify first</option>'; return; }
     try {
       const me = await Spotify.me();
-      plCache = plCache || await Spotify.myPlaylists();
+      if (!plCache) {
+        try { plCache = await Spotify.myPlaylists(); ls.set("kwb.plCache", plCache.map(p => ({ id: p.id, name: p.name, owner: p.owner ? { id: p.owner.id } : null, images: (p.images || []).slice(-1), items: p.items ? { total: p.items.total } : undefined, tracks: p.tracks ? { total: p.tracks.total } : undefined }))); }
+        catch (e) { const old = ls.get("kwb.plCache", null); if (!old || e.code === "auth") throw e; plCache = old; setTimeout(() => toast("Spotify is busy, so this is your saved list. Pull it fresh in a minute."), 300); setTimeout(() => { plCache = null; }, 60000); }
+      }
       const own = plCache.filter(p => p && p.owner && p.owner.id === me.id);
       const keep = selEx.value;
       selEx.innerHTML = '<option value="">Choose a playlist</option>' + own.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
@@ -566,7 +573,10 @@
     w.innerHTML = '<p class="note">Loading your playlists…</p>';
     try {
       const me = await Spotify.me();
-      plCache = plCache || await Spotify.myPlaylists();
+      if (!plCache) {
+        try { plCache = await Spotify.myPlaylists(); ls.set("kwb.plCache", plCache.map(p => ({ id: p.id, name: p.name, owner: p.owner ? { id: p.owner.id } : null, images: (p.images || []).slice(-1), items: p.items ? { total: p.items.total } : undefined, tracks: p.tracks ? { total: p.tracks.total } : undefined }))); }
+        catch (e) { const old = ls.get("kwb.plCache", null); if (!old || e.code === "auth") throw e; plCache = old; setTimeout(() => toast("Spotify is busy, so this is your saved list. Pull it fresh in a minute."), 300); setTimeout(() => { plCache = null; }, 60000); }
+      }
       const own = plCache.filter(p => p && p.owner && p.owner.id === me.id);
       const other = plCache.length - own.length;
       w.innerHTML = `<p class="note">${own.length} playlists you own.${other ? ` ${other} others you follow are hidden, because Spotify only shares the tracks of playlists you own.` : ""}</p>`;
@@ -583,7 +593,8 @@
       w.appendChild(list);
       if (restore && plScroll) requestAnimationFrame(() => window.scrollTo(0, plScroll));
     } catch (e) {
-      w.innerHTML = `<p class="note">${e.code === "auth" ? "Spotify sign-in expired. Tap Connect Spotify." : "Couldn't load playlists: " + esc(e.message)}</p>`;
+      w.innerHTML = `<p class="note">${e.code === "auth" ? "Spotify sign-in expired. Tap Connect Spotify." : "Couldn't load playlists: " + esc(e.message)}</p>${e.code === "auth" ? "" : '<button class="btn ghost" type="button" id="plRetry">Try again</button>'}`;
+      const rb = $("plRetry"); if (rb) rb.onclick = () => paintPlaylists();
       paintSpotifyBtn();
     }
   }
@@ -653,7 +664,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.25";
+  const APP_VERSION = "2.26";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------

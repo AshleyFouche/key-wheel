@@ -90,18 +90,23 @@
     LOG.push({ at: Date.now(), m: opts.method || "GET", p: path.replace(API, "").replace(/uris=[^&]+/, "uris=…"), s: status, msg: msg || "" });
     if (LOG.length > 25) LOG.shift();
   };
+  let coolUntil = 0;
   async function api(path, opts = {}) {
+    if (opts._bg && Date.now() < coolUntil) { const e = new Error("Spotify is busy — background lookups paused"); e.status = 429; e.code = "rate"; throw e; }
     const tk = await token();
     if (!tk) { const e = new Error("Not connected to Spotify"); e.code = "auth"; throw e; }
     const r = await fetch(path.startsWith("http") ? path : API + path, {
       ...opts, headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json", ...(opts.headers || {}) }
     });
     if (r.status === 429) {
-      // Spotify is rate-limiting. Short waits are retried a few times; a long one fails fast instead of hanging.
-      const wait = parseInt(r.headers.get("Retry-After") || "2", 10), tries = (opts._tries || 0);
-      logIt(opts, path, 429, "rate limited, retry after " + wait + "s");
-      if (wait > 30 || tries >= 3) { const e = new Error("Spotify is limiting requests (try again in " + (wait > 90 ? Math.round(wait / 60) + " min" : wait + " s") + ")"); e.status = 429; e.code = "rate"; throw e; }
-      await new Promise(res => setTimeout(res, Math.max(1, wait) * 1000));
+      // Spotify is rate-limiting (a rolling 30-second budget shared by everything the app does).
+      // Background lookups (artwork, genres) back off for a while; things you asked for retry with growing waits.
+      const hdr = parseInt(r.headers.get("Retry-After") || "0", 10), tries = (opts._tries || 0);
+      coolUntil = Date.now() + Math.max(30, hdr || 0) * 1000;
+      logIt(opts, path, 429, "rate limited" + (hdr ? ", retry after " + hdr + "s" : ""));
+      const giveUp = opts._bg || tries >= 5 || hdr > 60;
+      if (giveUp) { const e = new Error("Spotify is busy — too many requests just now. Try again in a minute."); e.status = 429; e.code = "rate"; throw e; }
+      await new Promise(res => setTimeout(res, (hdr || Math.min(2 ** (tries + 1), 10)) * 1000));
       return api(path, Object.assign({}, opts, { _tries: tries + 1 }));
     }
     logIt(opts, path, r.status, "");
@@ -355,9 +360,10 @@
     searchAll, searchTracks, moveInPlaylist, getTrack, getAlbum, getArtist, transfer, setVolume,
     recentlyPlayed, playerState, upNext, seek, next, previous,
     log: () => LOG.slice(), rawPlayer: () => api("/me/player"),
-    trackArt: async id => { const t = await api("/tracks/" + id); return t.album && t.album.images && t.album.images.length ? t.album.images[t.album.images.length - 1].url : ""; },
-    trackArtistIds: async id => ((await api("/tracks/" + id)).artists || []).map(a => a.id).filter(Boolean),
-    artistGenres: async id => (await api("/artists/" + id)).genres || [],
+    cooling: () => Date.now() < coolUntil,
+    trackArt: async id => { const t = await api("/tracks/" + id, { _bg: true }); return t.album && t.album.images && t.album.images.length ? t.album.images[t.album.images.length - 1].url : ""; },
+    trackArtistIds: async id => ((await api("/tracks/" + id, { _bg: true })).artists || []).map(a => a.id).filter(Boolean),
+    artistGenres: async id => (await api("/artists/" + id, { _bg: true })).genres || [],
     canLibrary, libContains, libSave, libRemove,
     setDeviceChooser: f => { chooser = f; },
     liveAdd, liveRemove, liveMove, liveReplace, playPlaylist,

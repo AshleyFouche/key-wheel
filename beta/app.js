@@ -653,7 +653,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.15";
+  const APP_VERSION = "2.16";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -723,7 +723,8 @@
     try {
       const p = await Spotify.rawPlayer();
       if (!p || !p.device) lines.push("NOW: Spotify reports nothing playing and no active device.");
-      else lines.push(`NOW: ${p.is_playing ? "playing" : "paused"} "${p.item ? p.item.name : "?"}" on ${p.device.name} (${p.device.type}${p.device.is_restricted ? ", LOCKED — Spotify won't take commands for it" : ""}${p.device.is_private_session ? ", private session" : ""}) · context: ${p.context ? p.context.type + (live.pl && p.context.uri === "spotify:playlist:" + live.pl ? " (your Live set)" : "") : "single track"}`);
+      if (p && p.device) lines.push(`NOW: ${p.is_playing ? "playing" : "paused"} "${p.item ? p.item.name : "?"}" on ${p.device.name} (${p.device.type}${p.device.is_restricted ? ", LOCKED — Spotify won't take commands for it" : ""}${p.device.is_private_session ? ", private session" : ""}) · context: ${p.context ? p.context.type + (live.pl && p.context.uri === "spotify:playlist:" + live.pl ? " (your Live set)" : "") : "single track"}`);
+      if (p && p.device) lines.push(`REPEAT: ${p.repeat_state || "?"} · SHUFFLE: ${p.shuffle_state ? "on" : "off"}${p.repeat_state && p.repeat_state !== "off" ? "  ← repeat sends Spotify back to the same song after your queue" : ""}`);
     } catch (e) { lines.push("NOW: couldn't ask Spotify — " + e.message); }
     try {
       const ds = await Spotify.devices();
@@ -731,7 +732,8 @@
       ds.forEach(d => lines.push(`  • ${d.name} — ${d.type}${d.is_active ? ", ACTIVE" : ""}${d.is_restricted ? ", LOCKED" : ""} · id …${(d.id || "").slice(-6)}`));
     } catch (e) { lines.push("DEVICES: couldn't ask Spotify — " + e.message); }
     let last = ""; try { last = localStorage.getItem("kwb.lastDevice") || ""; } catch (e) {}
-    lines.push("Live set: " + (liveOn ? "on" : "off") + (live.pl ? " · playlist …" + live.pl.slice(-6) + " · " + live.items.length + " tracks, playing #" + (live.cur + 1) : " · not started yet"));
+    if (liveOn) lines.push("Live set: on" + (live.pl ? " · playlist …" + live.pl.slice(-6) + " · " + live.items.length + " tracks, playing #" + (live.cur + 1) : " · not started yet"));
+    lines.push(`APP QUEUE: ${appQ.length} waiting${handed ? " · handed to Spotify: " + recOf(handed, qMeta.get(handed)).title : ""}`);
     lines.push("Last device ASH//FLOW saw playing: " + (last ? "id …" + last.slice(-6) : "none yet"));
     if (isLive()) {
       try {
@@ -740,7 +742,6 @@
         lines.push("APP UP NEXT:     " + (appQ.slice(0, 5).map(id => recOf(id, qMeta.get(id)).title).join(" · ") || "nothing"));
       } catch (e) {}
     }
-    lines.push("Other open copy of ASH//FLOW also controls Spotify: if stable is open too, close it while testing.");
     const log = Spotify.log();
     lines.push("RECENT COMMANDS (newest last): " + (log.length ? "" : "none yet"));
     log.forEach(l => lines.push(`  ${time(l.at)}  ${l.m} ${l.p}  →  ${l.s}${l.msg ? " " + l.msg : ""}`));
@@ -1026,7 +1027,7 @@
     toast(follow ? "Following what Spotify plays" : "Stopped following");
     if (follow && np) { const rec = byId.get(np.id); if (rec && rec.key && (!state.anchor || state.anchor.id !== rec.id)) setAnchor(rec, false, true); }
   };
-  let lastPoll = 0;
+  let lastPoll = 0, repeatFixAt = 0;
   async function pollNow() {
     if (!Spotify.connected() || !Spotify.canPlay() || document.visibilityState !== "visible") return;
     lastPoll = Date.now();
@@ -1047,6 +1048,12 @@
         liveTrack(); checkHanded(); headsKey = "";
         if (!$("view-playing").hidden) paintSuggest();
         if (follow) { const rec = byId.get(np.id); if (rec && rec.key && (!state.anchor || state.anchor.id !== rec.id)) setAnchor(rec, false, true); }
+      }
+      // Spotify's repeat (song or "context") makes it go back to the same track once a queued one ends,
+      // which fights the app's queue. Turn it off when there's something lined up.
+      if (np && np.repeat && np.repeat !== "off" && (appQ.length || handed || ls.get("kwb.autopick", true)) && Date.now() - repeatFixAt > 600000) {
+        repeatFixAt = Date.now();
+        Spotify.setRepeat("off").then(() => toast("Spotify's repeat was on, which kept sending it back to the same song. Turned it off so your queue plays on.", 6000)).catch(() => {});
       }
       paintNp(); paintPlaying(); pump();
     } catch (e) { if (e.code === "auth") paintSpotifyBtn(); }

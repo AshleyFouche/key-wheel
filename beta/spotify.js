@@ -240,6 +240,7 @@
   // Play a list of tracks (up to 100) one after another.
   const playList = trackIds => withDevice(dev => api("/me/player/play" + q(dev), { method: "PUT", body: JSON.stringify({ uris: trackIds.slice(0, 100).map(id => "spotify:track:" + id) }) }));
   const setShuffle = on => api("/me/player/shuffle?state=" + (on ? "true" : "false"), { method: "PUT" });
+  const setRepeat = st => api("/me/player/repeat?state=" + st, { method: "PUT" });
   const pause = () => api("/me/player/pause", { method: "PUT" });
   const resume = () => withDevice(dev => api("/me/player/play" + q(dev), { method: "PUT" }));
   async function nowPlaying() {
@@ -265,7 +266,7 @@
     if (!j || !j.item) return null;
     const t = trackOf(j.item); if (!t) return null;
     if (j.device && j.device.id) { try { localStorage.setItem("kwb.lastDevice", j.device.id); } catch (e) {} }
-    return Object.assign(t, { context: j.context && j.context.uri ? j.context.uri : null, playing: !!j.is_playing, progress: j.progress_ms || 0, at: Date.now(), device: j.device ? j.device.name : "", deviceType: j.device ? j.device.type : "",
+    return Object.assign(t, { context: j.context && j.context.uri ? j.context.uri : null, playing: !!j.is_playing, repeat: j.repeat_state || "off", shuffle: !!j.shuffle_state, progress: j.progress_ms || 0, at: Date.now(), device: j.device ? j.device.name : "", deviceType: j.device ? j.device.type : "",
       volume: j.device && typeof j.device.volume_percent === "number" ? j.device.volume_percent : null, canVolume: j.device ? j.device.supports_volume !== false : false });
   }
   async function upNext() {
@@ -357,7 +358,7 @@
     canLibrary, libContains, libSave, libRemove,
     setDeviceChooser: f => { chooser = f; },
     liveAdd, liveRemove, liveMove, liveReplace, playPlaylist,
-    canPlay, play, playContext, playList, setShuffle, queue, pause, resume, nowPlaying, devices,
+    canPlay, play, playContext, playList, setShuffle, setRepeat, queue, pause, resume, nowPlaying, devices,
     login, handleRedirect, connected: () => !!store.get(), logout: () => store.clear(),
     me, myPlaylists, playlistTracks, createPlaylist, addTracks, configured: () => !!window.CONFIG.spotifyClientId
   };

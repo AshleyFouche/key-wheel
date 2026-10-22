@@ -664,7 +664,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.26";
+  const APP_VERSION = "2.27";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -767,6 +767,8 @@
         lines.push(`  wheel genre filter: ${state.genres.length ? state.genres.map(famName).join(", ") : "off"} · stay in genre: ${stayGenre ? "on" : "off"} · direction: ${state.dir}`);
       }
     } catch (e) { lines.push("MIX CHECK failed: " + e.message); }
+    lines.push(`AUTO-PICK: ${autoPick ? "on" : "off"} · ${autoLog ? time(autoLog.at) + " (" + autoLog.why + ", playing " + autoLog.playing + "): " + autoLog.msg : "hasn't run yet"}`);
+    { const ref = mixRef(); lines.push(`FOLLOWING: ${ref.rec ? ref.rec.title + " " + (ref.rec.key || "?") + (ref.fallback ? " (last keyed track — the playing one isn't in your library)" : "") : "nothing — the playing track isn't in your keyed library and none was in the last 3 hours"}`); }
     { const h = FlowGenres.health(), done = T.filter(t => genre[t.id]).length;
       lines.push(`GENRES: ${done} of ${T.length} checked · ${h.running ? "running" : "not running"} · switched ${ls.get("kwb.genreOn", false) ? "on" : "off"}${h.lastAt ? " · last progress " + time(h.lastAt) : ""}${h.skipped ? " · " + h.skipped + " skipped this session" : ""}${h.lastErr ? " · " + h.lastErr : ""}`); }
     const log = Spotify.log();
@@ -2000,7 +2002,8 @@
   const headsDismissed = new Set(), autoDone = new Set();
   // Auto-pick: if nothing is queued, the top suggestion is queued this long before the end,
   // so Spotify has it in time (and before any crossfade starts).
-  const AUTO_MS = 8000;
+  const AUTO_MS = 20000;   // 20 s gives Spotify time to take it even if it's busy and the request needs retrying
+  let autoLog = ls.get("kwb.autoLog", null);   // last auto-pick, for the connection check
   let autoPick = ls.get("kwb.autopick", true);
   function headsState() {
     if (!np || !np.playing || !np.duration) return null;
@@ -2020,9 +2023,8 @@
     const key = st.mode + "|" + np.id + "|" + (st.next ? st.next.id : "") + "|" + appQ.length;
     const autoIn = Math.ceil((st.left - AUTO_MS) / 1000);
     if (st.mode === "empty" && autoPick && st.left <= AUTO_MS && !autoDone.has(np.id) && st.cur && st.cur.key) {
-      const top = suggest(st.cur, 1)[0];
       autoDone.add(np.id);
-      if (top) { enqueue(top.t); toast("Auto-queued: " + top.t.title); headsKey = ""; return; }
+      if (autoPickNow("near the end")) { headsKey = ""; return; }
     }
     if (key === headsKey) {
       const c = box.querySelector(".hclock"); if (c) c.textContent = clock + " left";
@@ -2055,9 +2057,26 @@
       headsKey = ""; paintHeads();
     });
   }
+  // Queue the top suggestion now (and hand it straight to Spotify). Used near the end of a track, and when you
+  // leave the app — iOS pauses web apps in the background, so this is the last chance to line something up.
+  function autoPickNow(why) {
+    const ref = mixRef(), cur = ref.rec;
+    const note = (msg, ok) => { autoLog = { at: Date.now(), why, msg, ok, playing: np ? np.title : "" }; ls.set("kwb.autoLog", autoLog); };
+    if (!cur || !cur.key) { note("nothing to follow: no track with a key in the last 3 hours", false); return false; }
+    const top = suggest(cur, 1)[0];
+    if (!top) { note("no suggestion found for " + cur.title, false); return false; }
+    enqueue(top.t); pump(true);
+    note("queued " + top.t.title + (ref.fallback ? " (following " + cur.title + ")" : ""), true);
+    if (why === "near the end") toast("Auto-queued: " + top.t.title);
+    return true;
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "hidden" || !autoPick || !np || !np.playing) return;
+    if (!appQ.length && !handed && !autoDone.has(np.id)) { autoDone.add(np.id); autoPickNow("leaving the app"); }
+  });
   function setAuto(on) {
     autoPick = on; ls.set("kwb.autopick", on); $("autoTog2").checked = on;
-    toast(on ? "Auto-pick on — if nothing is queued, the top suggestion queues itself 8 seconds before the end" : "Auto-pick off");
+    toast(on ? "Auto-pick on — if nothing is queued, the top suggestion queues itself 20 seconds before the end, or straight away when you leave the app" : "Auto-pick off");
     headsKey = ""; paintHeads();
   }
   $("autoTog2").checked = autoPick;

@@ -664,7 +664,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.27";
+  const APP_VERSION = "2.28";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -744,7 +744,7 @@
     } catch (e) { lines.push("DEVICES: couldn't ask Spotify — " + e.message); }
     let last = ""; try { last = localStorage.getItem("kwb.lastDevice") || ""; } catch (e) {}
     if (liveOn) lines.push("Live set: on" + (live.pl ? " · playlist …" + live.pl.slice(-6) + " · " + live.items.length + " tracks, playing #" + (live.cur + 1) : " · not started yet"));
-    lines.push(`APP QUEUE: ${appQ.length} waiting${handed ? " · handed to Spotify: " + recOf(handed, qMeta.get(handed)).title : ""}`);
+    lines.push(`APP QUEUE: ${appQ.length} waiting${handed ? " · in Spotify: " + [handed, ...ahead].map(id => recOf(id, qMeta.get(id)).title).join(" → ") : ""}`);
     lines.push("Last device ASH//FLOW saw playing: " + (last ? "id …" + last.slice(-6) : "none yet"));
     if (isLive()) {
       try {
@@ -991,7 +991,7 @@
       await Spotify.next();
     }
     if (skipped.length) {
-      if (handed && skipped.includes(handed)) handed = null;
+      if (handed && skipped.includes(handed)) { handed = null; ahead = []; }
       appQ = skipped.concat(appQ.filter(x => !skipped.includes(x)));
       saveQ(); paintQueue();
       toast(`Playing now — ${skipped.length} queued ${skipped.length === 1 ? "track" : "tracks"} kept, up next`);
@@ -1056,7 +1056,7 @@
   }
   $("npMix").onclick = () => { const rec = np && byId.get(np.id); if (rec && rec.key) setAnchor(rec); };
   function paintModes() {
-    $("npQueue").textContent = "Queue · " + (appQ.length + (handed ? 1 : 0));
+    $("npQueue").textContent = "Queue · " + (appQ.length + (handed ? 1 : 0) + ahead.length);
     $("npFollow").setAttribute("aria-pressed", follow ? "true" : "false");
     $("npFollow").textContent = follow ? "Following ✓" : "Follow";
   }
@@ -1081,7 +1081,8 @@
       else { if (!emptySince) emptySince = Date.now(); if (!np || Date.now() - emptySince >= 12000) np = null; }
       if (np && np.progress >= 30000 && loggedFor !== np.id) { loggedFor = np.id; addHistory([{ id: np.id, title: np.title, artist: np.artist, at: np.at - np.progress, src: "app" }]); }
       if (Date.now() - lastRecentSync > 120000) syncRecent();
-      if (np && handed && np.id === handed) { handed = null; saveQ(); }
+      if (np && handed && np.id === handed) { handed = ahead.shift() || null; saveQ(); }
+      else if (np && ahead.includes(np.id)) { const k = ahead.indexOf(np.id); ahead = ahead.slice(k + 1); handed = ahead.shift() || null; saveQ(); }
       if (np && np.id !== lastNpId) {
         lastNpId = np.id; noteStarted(np.id);
         liveTrack(); checkHanded(); headsKey = "";
@@ -1269,8 +1270,12 @@
   // ---------- ASH//FLOW queue ----------
   // Spotify lets apps add to its queue but never remove, so the queue lives here.
   // Only the next track is handed to Spotify; when it starts playing, the following one is handed over.
-  let appQ = ls.get("kwb.appq", []), handed = ls.get("kwb.handed", null), pumping = false;
-  function saveQ() { ls.set("kwb.appq", appQ); ls.set("kwb.handed", handed); paintModes(); paintQueue(); if (typeof paintSuggest === "function") paintSuggest(); }
+  // "ahead": extra tracks already given to Spotify after "handed" — lined up in one go when you leave the app,
+  // because iOS pauses the app in the background and it can't hand them over one by one.
+  let appQ = ls.get("kwb.appq", []), handed = ls.get("kwb.handed", null), ahead = ls.get("kwb.ahead", []), pumping = false;
+  if (!handed) ahead = [];
+  const AHEAD_N = 5;
+  function saveQ() { ls.set("kwb.appq", appQ); ls.set("kwb.handed", handed); ls.set("kwb.ahead", ahead); paintModes(); paintQueue(); if (typeof paintSuggest === "function") paintSuggest(); }
   function enqueue(t) {
     if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return; }
     if (!Spotify.canPlay()) { showReconnect(); return; }
@@ -1404,7 +1409,7 @@
     if (!handed || !np || np.id === handed) return;
     try {
       const raw = await Spotify.upNext();
-      if (!raw.some(it => it.id === handed)) { handed = null; saveQ(); pump(); }
+      if (!raw.some(it => it.id === handed)) { handed = null; ahead = []; saveQ(); pump(); }
     } catch (e) {}
   }
   function recOf(id, fallback) { return byId.get(id) || Object.assign({ id, title: "Unknown track", artist: "", tempo: 0, key: null }, fallback || {}); }
@@ -1412,15 +1417,15 @@
   function paintQueue() {
     const box = $("pvQueue"); if (!box) return;
     box.innerHTML = "";
-    const ids = (handed ? [handed] : []).concat(appQ);
+    const sent = (handed ? [handed] : []).concat(ahead), ids = sent.concat(appQ);
     $("qClear").hidden = !appQ.length;
     if (!ids.length) { box.innerHTML = '<p class="note">Your queue is empty. Swipe right on any track to add it.</p>'; return; }
     let prev = np ? byId.get(np.id) : null;
     ids.forEach((id, i) => {
-      const rec = recOf(id, qMeta.get(id)), locked = i === 0 && !!handed;
+      const rec = recOf(id, qMeta.get(id)), locked = i < sent.length;
       const r = rowEl(rec, null, setAnchor);
       r.classList.add("qrow", "noswipe"); if (locked) r.classList.add("locked");
-      r.dataset.id = id; r.dataset.qi = locked ? "" : String(i - (handed ? 1 : 0));
+      r.dataset.id = id; r.dataset.qi = locked ? "" : String(i - sent.length);
       const h = document.createElement("span"); h.className = "drag"; h.textContent = "≡"; r.prepend(h);
       r.querySelector(".add").remove();
       const del = document.createElement("button"); del.type = "button"; del.className = "del"; del.textContent = "✕"; del.setAttribute("aria-label", "Remove from queue");
@@ -1432,7 +1437,7 @@
       lab.textContent = !rec.key ? "No key yet" : !prev || !prev.key ? "" : m ? MOVE_NAME[m] : "Key clash";
       if (rec.key && prev && prev.key && !m) lab.style.color = "var(--warn)";
       const tt = r.querySelector(".tt");
-      if (locked) { const lk = document.createElement("div"); lk.className = "lock"; lk.textContent = "Next · sent to Spotify"; tt.prepend(lk); }
+      if (locked) { const lk = document.createElement("div"); lk.className = "lock"; lk.textContent = i === 0 ? "Next · sent to Spotify" : "Lined up in Spotify"; tt.prepend(lk); }
       if (lab.textContent) tt.prepend(lab);
       box.appendChild(r);
       prev = rec;
@@ -1907,7 +1912,7 @@
   function suggest(from, n) {
     if (!from || !from.key) return [];
     const rel = relations(from.key), skip = playedThisFlow();
-    skip.add(from.id); if (handed) skip.add(handed); appQ.forEach(id => skip.add(id));
+    skip.add(from.id); if (handed) skip.add(handed); ahead.forEach(id => skip.add(id)); appQ.forEach(id => skip.add(id));
     const out = [];
     for (const t of T) {
       { const g = gOf(t.id);
@@ -1930,7 +1935,7 @@
     if (out.length) return out.sort((a, b) => exact(b) - exact(a) || b.sc - a.sc).slice(0, n);
     // The fallback only leaves out what really played (30 s or more) this flow — not tracks that were
     // merely started or skipped past — so a well-used playlist doesn't look empty.
-    const hard = playedThisFlow(true); hard.add(from.id); if (handed) hard.add(handed); appQ.forEach(id => hard.add(id));
+    const hard = playedThisFlow(true); hard.add(from.id); if (handed) hard.add(handed); ahead.forEach(id => hard.add(id)); appQ.forEach(id => hard.add(id));
     return widen(from, n, hard, rel);
   }
   // Nothing close? Never leave the music to stop. Fallback order, as Ash asked for:
@@ -2070,13 +2075,37 @@
     if (why === "near the end") toast("Auto-queued: " + top.t.title);
     return true;
   }
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState !== "hidden" || !autoPick || !np || !np.playing) return;
-    if (!appQ.length && !handed && !autoDone.has(np.id)) { autoDone.add(np.id); autoPickNow("leaving the app"); }
-  });
+  // Leaving the app: give Spotify up to 5 tracks in one go — your queue first, then (with Auto-pick on)
+  // a chain of suggestions, each following the one before. They play in order while the app is asleep.
+  let lining = false;
+  async function lineUpOnLeave() {
+    if (lining || !Spotify.connected() || !Spotify.canPlay() || !np) return;
+    lining = true;
+    try {
+      const have = (handed ? 1 : 0) + ahead.length;
+      if (autoPick && np.playing) {
+        let ref = mixRef().rec, added = 0;
+        const lastId = appQ.length ? appQ[appQ.length - 1] : ahead.length ? ahead[ahead.length - 1] : handed;
+        if (lastId && byId.get(lastId) && byId.get(lastId).key) ref = byId.get(lastId);
+        while (ref && ref.key && have + appQ.length < AHEAD_N) {
+          const top = suggest(ref, 1)[0]; if (!top) break;
+          appQ.push(top.t.id); ref = top.t; added++;
+        }
+        if (added) { autoLog = { at: Date.now(), why: "leaving the app", msg: `lined up ${added} ${added === 1 ? "suggestion" : "suggestions"}`, ok: true, playing: np.title }; ls.set("kwb.autoLog", autoLog); }
+      }
+      // Hand everything waiting (up to 5 in Spotify) over now, in order.
+      while (appQ.length && (handed ? 1 : 0) + ahead.length < AHEAD_N) {
+        const id = appQ[0];
+        await Spotify.queue(id);
+        appQ.shift();
+        if (!handed) handed = id; else ahead.push(id);
+        saveQ();
+      }
+    } catch (e) {} finally { lining = false; saveQ(); }
+  }
   function setAuto(on) {
     autoPick = on; ls.set("kwb.autopick", on); $("autoTog2").checked = on;
-    toast(on ? "Auto-pick on — if nothing is queued, the top suggestion queues itself 20 seconds before the end, or straight away when you leave the app" : "Auto-pick off");
+    toast(on ? "Auto-pick on — if nothing is queued, the top suggestion queues itself 20 seconds before the end, or when you leave the app it lines up 5 tracks in Spotify" : "Auto-pick off");
     headsKey = ""; paintHeads();
   }
   $("autoTog2").checked = autoPick;
@@ -2086,8 +2115,8 @@
   setInterval(() => { if (np && np.playing && np.duration && np.duration - posNow() < 20000 && Date.now() - lastPoll > 950) pollNow(); }, 1000);
   setInterval(() => { if (appQ.length && !handed) pump(); }, 1000);
   // Leaving the app (locking the phone, switching apps): hand the next track over now, while we still can.
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") pump(true); });
-  window.addEventListener("pagehide", () => pump(true));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") lineUpOnLeave(); });
+  window.addEventListener("pagehide", () => lineUpOnLeave());
 
   // ---------- Suggested next on the Playing tab ----------
   function paintSuggest() {

@@ -611,3 +611,12 @@ body.fz-open{overflow:hidden}
 .sess.pending{border-style:dashed}
 .sess.pending .sess-h{cursor:default}
 .sess.pending .sess-h span{white-space:normal}
+
+/* Next box (2.40) */
+.nextbox{border:1px solid var(--line);border-radius:16px;padding:10px 12px;background:var(--surface);display:grid;gap:6px;margin-top:6px}
+.nextbox .nb-h{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;gap:8px;align-items:center}
+.nextbox .nb-by{text-transform:none;letter-spacing:0;font-size:12px;padding:2px 8px;border-radius:999px;background:var(--raise);color:var(--ink)}
+.nextbox .nb-by.locked{background:color-mix(in srgb,var(--good) 25%,var(--raise))}
+.nextbox .note{margin:0;font-size:12px}
+.row.isnext{outline:1px solid color-mix(in srgb,var(--accent) 45%,transparent);border-radius:10px}
+.nby{color:var(--muted);font-weight:400}

@@ -664,7 +664,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.30";
+  const APP_VERSION = "2.31";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -2081,7 +2081,13 @@
   // a chain of suggestions, each following the one before. They play in order while the app is asleep.
   let lining = false;
   async function lineUpOnLeave() {
-    if (typeof helperOn === "function" && helperOn()) return;   // the helper takes over instead
+    // With the helper connected it takes over — but if the track ends within a minute, hand over the next one
+    // now, in case the phone locks before the helper notices (it takes up to ~40 s).
+    if (typeof helperOn === "function" && helperOn()) {
+      if (autoPick && np && np.playing && np.duration && np.duration - posNow() < 60000 && !handed && !appQ.length && !autoDone.has(np.id)) { autoDone.add(np.id); autoPickNow("leaving the app"); }
+      else if (np && np.playing && np.duration && np.duration - posNow() < 60000 && !handed && appQ.length) pump(true);
+      return;
+    }
     if (lining || !Spotify.connected() || !Spotify.canPlay() || !np) return;
     lining = true;
     try {
@@ -2401,7 +2407,9 @@
     try {
       const rows = libRows(), libHash = hashStr(JSON.stringify(rows));
       const body = { key: helperKey, libHash, settings: helperSettings(), queue: appQ, handed, queueAt: qAt, since: helperSince,
-        history: ls.get("kwb.history", []).slice(-200), leaving: !!opts.leaving };
+        history: ls.get("kwb.history", []).slice(-200), leaving: !!opts.leaving,
+        // The app has already lined up (or is lining up) the next track for what's playing — the helper shouldn't add another.
+        handingFor: np && (handed || appQ.length || (typeof autoDone !== "undefined" && autoDone.has(np.id))) ? np.id : null };
       if (opts.withLib) body.library = rows;
       const r = await fetch(HELPER + "/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: !!opts.leaving && !opts.withLib });
       const j = await r.json().catch(() => ({}));

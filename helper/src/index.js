@@ -181,6 +181,7 @@ export class Brain {
         await this.st.put("history", all.slice(-400));
       }
       if (body.queue) { await this.st.put("queue", body.queue); await this.st.put("handed", body.handed || null); await this.st.put("qAt", now); }
+      if (body.handingFor) await this.st.put("queuedFor", body.handingFor);
       if (body.leaving) await this.st.put("ping", 0); else await this.st.put("ping", now);
       // Hand back what happened while the app was away.
       const since = body.since || 0, acts = (await this.get("acts", [])).filter(a => a.at > since);

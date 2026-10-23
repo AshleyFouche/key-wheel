@@ -19,13 +19,14 @@
     return b64url(a).slice(0, n);
   }
 
-  async function login() {
+  // forHelper: a separate sign-in whose tokens go to the cloud helper instead of being kept by the app.
+  async function login(forHelper) {
     const cid = window.CONFIG.spotifyClientId;
     if (!cid) throw new Error("No Spotify Client ID set yet.");
     const verifier = randomString(64);
     const challenge = b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
     // The verifier also rides in `state`, so sign-in still completes if iPhone returns to Safari instead of the home-screen app.
-    const state = randomString(16) + "." + verifier;
+    const state = (forHelper ? "H" : "") + randomString(16) + "." + verifier;
     try { sessionStorage.setItem("kwb.pkce", verifier); localStorage.setItem("kwb.pkce", verifier); } catch (e) {}
     const p = new URLSearchParams({
       client_id: cid, response_type: "code", redirect_uri: window.CONFIG.redirectUri,
@@ -52,6 +53,7 @@
     try { sessionStorage.removeItem("kwb.pkce"); localStorage.removeItem("kwb.pkce"); } catch (e) {}
     const j = await r.json();
     if (!r.ok) return { error: j.error_description || j.error || "token_failed" };
+    if (st.startsWith("H")) return { helper: j };          // helper sign-in: hand these to the helper, keep the app's own
     saveToken(j);
     return { ok: true };
   }

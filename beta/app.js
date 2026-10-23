@@ -664,7 +664,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.28";
+  const APP_VERSION = "2.29";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -767,6 +767,7 @@
         lines.push(`  wheel genre filter: ${state.genres.length ? state.genres.map(famName).join(", ") : "off"} · stay in genre: ${stayGenre ? "on" : "off"} · direction: ${state.dir}`);
       }
     } catch (e) { lines.push("MIX CHECK failed: " + e.message); }
+    lines.push(`HELPER: ${!HELPER ? "not set up" : !helperOn() ? "not connected" : helperStat ? (helperStat.error || ((helperStat.appPresent ? "standing by" : "running") + (helperStat.lastNote ? " · " + helperStat.lastNote : "") + (helperStat.lastCheck ? " · last check " + time(helperStat.lastCheck) : ""))) : "connected, no reply yet"}`);
     lines.push(`AUTO-PICK: ${autoPick ? "on" : "off"} · ${autoLog ? time(autoLog.at) + " (" + autoLog.why + ", playing " + autoLog.playing + "): " + autoLog.msg : "hasn't run yet"}`);
     { const ref = mixRef(); lines.push(`FOLLOWING: ${ref.rec ? ref.rec.title + " " + (ref.rec.key || "?") + (ref.fallback ? " (last keyed track — the playing one isn't in your library)" : "") : "nothing — the playing track isn't in your keyed library and none was in the last 3 hours"}`); }
     { const h = FlowGenres.health(), done = T.filter(t => genre[t.id]).length;
@@ -1272,10 +1273,11 @@
   // Only the next track is handed to Spotify; when it starts playing, the following one is handed over.
   // "ahead": extra tracks already given to Spotify after "handed" — lined up in one go when you leave the app,
   // because iOS pauses the app in the background and it can't hand them over one by one.
+  var qAt = ls.get("kwb.qAt", 0);
   let appQ = ls.get("kwb.appq", []), handed = ls.get("kwb.handed", null), ahead = ls.get("kwb.ahead", []), pumping = false;
   if (!handed) ahead = [];
   const AHEAD_N = 5;
-  function saveQ() { ls.set("kwb.appq", appQ); ls.set("kwb.handed", handed); ls.set("kwb.ahead", ahead); paintModes(); paintQueue(); if (typeof paintSuggest === "function") paintSuggest(); }
+  function saveQ() { qAt = Date.now(); ls.set("kwb.qAt", qAt); ls.set("kwb.appq", appQ); ls.set("kwb.handed", handed); ls.set("kwb.ahead", ahead); paintModes(); paintQueue(); if (typeof paintSuggest === "function") paintSuggest(); }
   function enqueue(t) {
     if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return; }
     if (!Spotify.canPlay()) { showReconnect(); return; }
@@ -2079,6 +2081,7 @@
   // a chain of suggestions, each following the one before. They play in order while the app is asleep.
   let lining = false;
   async function lineUpOnLeave() {
+    if (typeof helperOn === "function" && helperOn()) return;   // the helper takes over instead
     if (lining || !Spotify.connected() || !Spotify.canPlay() || !np) return;
     lining = true;
     try {
@@ -2380,6 +2383,78 @@
     return `<div class="drafts"><div class="eyebrow">Your drafts</div>${drafts.map(d => { const recs = d.ids.map(dRec), st = draftStats(recs);
       return `<button class="dchip" type="button" data-d="${esc(d.id)}"><b>${esc(d.name)}</b><span>${recs.length} tracks · ${st.rough ? st.rough + " rough" : "smooth"} · edited ${dayFmt.format(d.at)}</span></button>`; }).join("")}</div>`;
   }
+  // ---------- background helper (always-on, in the cloud) ----------
+  // While the app is open it pings the helper every 30 s and shares the plan (library, queue, settings, plays).
+  // When the pings stop, the helper keeps lining up the next track. Back in the app, it reports what played.
+  const HELPER = (window.CONFIG && window.CONFIG.helperUrl) || "";
+  let helperKey = ls.get("kwb.helperKey", ""), helperStat = null, helperSince = ls.get("kwb.helperSince", 0);
+  const helperOn = () => !!(HELPER && helperKey);
+  function libRows() {
+    return T.map(t => { const g = gOf(t.id); return [t.id, t.key, t.tempo || 0, g ? g.f : null, g ? (g.s || []).slice(0, 4) : [], [...(t.src || []), ...(t.crates || [])]]; });
+  }
+  function hashStr(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return String(h >>> 0) + ":" + str.length; }
+  function helperSettings() { return { autoPick, dir: state.dir, genres: state.genres, stayGenre, flowBreaks: flowBreaks() }; }
+  let helperBusy = false;
+  async function helperSync(opts = {}) {
+    if (!helperOn() || (helperBusy && !opts.leaving)) return;
+    helperBusy = true;
+    try {
+      const rows = libRows(), libHash = hashStr(JSON.stringify(rows));
+      const body = { key: helperKey, libHash, settings: helperSettings(), queue: appQ, handed, queueAt: qAt, since: helperSince,
+        history: ls.get("kwb.history", []).slice(-200), leaving: !!opts.leaving };
+      if (opts.withLib) body.library = rows;
+      const r = await fetch(HELPER + "/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: !!opts.leaving && !opts.withLib });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 401) { helperStat = { error: "The helper doesn't recognise this app any more — tap Connect helper again." }; helperKey = ""; ls.set("kwb.helperKey", ""); paintHelper(); return; }
+      if (!r.ok) { helperStat = { error: j.error || "Helper error " + r.status }; paintHelper(); return; }
+      helperStat = j.status || null;
+      // What played (and what the helper lined up) while you were away.
+      if (j.acts && j.acts.length) {
+        addHistory(j.acts.filter(a => a.type === "play").map(a => ({ id: a.id, title: a.title, artist: a.artist, at: a.at, src: "helper" })));
+        helperSince = Math.max(helperSince, ...j.acts.map(a => a.at)); ls.set("kwb.helperSince", helperSince);
+        const q = j.acts.filter(a => a.type === "queue").length;
+        if (q && !opts.leaving) toast(`While you were away the helper lined up ${q} ${q === 1 ? "track" : "tracks"}`);
+      }
+      if (j.queue) { appQ = j.queue; handed = j.handed || null; ahead = []; saveQ(); }
+      if (j.needLib && !opts.withLib && !opts.leaving) { helperBusy = false; return helperSync({ withLib: true }); }
+      paintHelper();
+    } catch (e) { helperStat = { error: "Couldn't reach the helper" }; paintHelper(); }
+    finally { helperBusy = false; }
+  }
+  setInterval(() => { if (document.visibilityState === "visible") helperSync(); }, 30000);
+  document.addEventListener("visibilitychange", () => { if (!helperOn()) return; if (document.visibilityState === "hidden") helperSync({ leaving: true }); else helperSync(); });
+  window.addEventListener("pagehide", () => { if (helperOn()) helperSync({ leaving: true }); });
+  async function helperConnected(tokens) {
+    if (!HELPER) { toast("The helper isn't set up yet"); return; }
+    try {
+      const r = await fetch(HELPER + "/connect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refresh: tokens.refresh_token, key: helperKey }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "error " + r.status);
+      helperKey = j.key; ls.set("kwb.helperKey", helperKey); helperSince = Date.now(); ls.set("kwb.helperSince", helperSince);
+      toast("Helper connected — it will keep the music going when the app is closed", 6000);
+      helperSync({ withLib: true }); go("more");
+    } catch (e) { toast("Couldn't connect the helper: " + e.message, 6000); }
+  }
+  function paintHelper() {
+    const st = $("hStatus"), b = $("hConnect"); if (!st || !b) return;
+    if (!HELPER) { st.textContent = "Not available yet."; b.hidden = true; return; }
+    b.hidden = false; b.textContent = helperOn() ? "Reconnect helper" : "Connect helper";
+    $("hOff").hidden = !helperOn();
+    if (!helperOn()) { st.textContent = "Not connected. Connect it once and it keeps lining up tracks while your phone is locked or off."; return; }
+    if (!helperStat) { st.textContent = "Connected · checking…"; return; }
+    if (helperStat.error) { st.textContent = helperStat.error; return; }
+    if (helperStat.dead) { st.textContent = "The helper's Spotify sign-in has expired — tap Reconnect helper."; return; }
+    const la = helperStat.lastAct;
+    st.textContent = (helperStat.appPresent ? "Standing by while the app is open." : "Running — " + (helperStat.lastNote || "keeping the music going") + ".") +
+      (la ? ` Last ${la.type === "queue" ? "lined up a track" : "saw a track start"} at ${timeFmt.format(la.at)}.` : "");
+  }
+  $("hConnect").onclick = () => { if (!Spotify.configured()) return; toast("Signing the helper in to Spotify…"); Spotify.login(true).catch(e => toast(e.message)); };
+  $("hOff").onclick = async () => {
+    const b = $("hOff");
+    if (!b.dataset.confirm) { b.dataset.confirm = "1"; b.textContent = "Tap again to disconnect"; setTimeout(() => { delete b.dataset.confirm; b.textContent = "Disconnect helper"; }, 3000); return; }
+    try { await fetch(HELPER + "/disconnect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: helperKey }) }); } catch (e) {}
+    helperKey = ""; ls.set("kwb.helperKey", ""); helperStat = null; paintHelper(); toast("Helper disconnected");
+  };
   // ---------- tabs + spotify button ----------
   function go(v, skipPaint) {
     document.querySelectorAll(".view").forEach(s => s.hidden = s.id !== "view-" + v);
@@ -2392,7 +2467,7 @@
     if (v === "search") paintSearch();
     if (v === "history") { paintHistory(); syncRecent(); }
     if (v === "playlists" && !skipPaint) paintPlaylists(true);
-    if (v === "more") paintMore();
+    if (v === "more") { paintMore(); paintHelper(); if (helperOn()) helperSync(); }
     if (v === "draft") paintDraft();
     if (v !== "browse" && v !== "info" && v !== "match") { try { sessionStorage.setItem("kwb.view", v); } catch (e) {} }
   }
@@ -2451,6 +2526,7 @@
     go(v);
     paintModes();
     if (Spotify.connected()) { if (Spotify.canPlay()) { startPolling(); syncRecent(); } else showReconnect(); }
+    if (res && res.helper) helperConnected(res.helper);
     if (res && res.ok) { toast("Connected to Spotify"); if (!Spotify.canPlay()) go("playlists"); }
     else if (res && res.error) toast("Spotify sign-in didn't finish: " + res.error, 5000);
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});

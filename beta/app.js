@@ -664,7 +664,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.32";
+  const APP_VERSION = "2.33";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -767,6 +767,7 @@
         lines.push(`  wheel genre filter: ${state.genres.length ? state.genres.map(famName).join(", ") : "off"} · stay in genre: ${stayGenre ? "on" : "off"} · direction: ${state.dir}`);
       }
     } catch (e) { lines.push("MIX CHECK failed: " + e.message); }
+    if (nextLog.length) { lines.push("NEXT PRESSES (newest last):"); nextLog.forEach(n => lines.push(`  ${time(n.at)}  wanted ${n.want ? recOf(n.want, qMeta.get(n.want)).title : "—"} (${n.how}) → got ${n.got === n.want ? "✓" : (n.gotTitle || n.got || "nothing")}${n.strays ? " · skipped " + n.strays + " stray" : ""}`)); }
     lines.push(`HELPER: ${!HELPER ? "not set up" : !helperOn() ? "not connected" : helperStat ? (helperStat.error || ((helperStat.appPresent ? "standing by" : "running") + (helperStat.lastNote ? " · " + helperStat.lastNote : "") + (helperStat.lastCheck ? " · last check " + time(helperStat.lastCheck) : ""))) : "connected, no reply yet"}`);
     lines.push(`AUTO-PICK: ${autoPick ? "on" : "off"} · ${autoLog ? time(autoLog.at) + " (" + autoLog.why + ", playing " + autoLog.playing + "): " + autoLog.msg : "hasn't run yet"}`);
     { const ref = mixRef(); lines.push(`FOLLOWING: ${ref.rec ? ref.rec.title + " " + (ref.rec.key || "?") + (ref.fallback ? " (last keyed track — the playing one isn't in your library)" : "") : "nothing — the playing track isn't in your keyed library and none was in the last 3 hours"}`); }
@@ -992,10 +993,13 @@
       await Spotify.next();
     }
     if (skipped.length) {
+      // Only tracks the app itself lined up are kept (and moved back to the front of your queue).
+      // Anything else Spotify had waiting is a stray, and is dropped so it can't come back later.
+      const mine = new Set([...(handed ? [handed] : []), ...ahead]), keep = skipped.filter(x => mine.has(x));
       if (handed && skipped.includes(handed)) { handed = null; ahead = []; }
-      appQ = skipped.concat(appQ.filter(x => !skipped.includes(x)));
+      appQ = keep.concat(appQ.filter(x => !keep.includes(x)));
       saveQ(); paintQueue();
-      toast(`Playing now — ${skipped.length} queued ${skipped.length === 1 ? "track" : "tracks"} kept, up next`);
+      if (keep.length) toast(`Playing now — ${keep.length} queued ${keep.length === 1 ? "track" : "tracks"} kept, up next`);
     }
   }
   async function playTrack(t) {
@@ -1161,29 +1165,68 @@
   $("pvPP").onclick = () => $("npPP").click();
   $("pvPrev").onclick = async () => { try { await Spotify.previous(); setTimeout(pollNow, 700); } catch (e) { playError(e); } };
   // Next: if Spotify has nothing lined up, skipping would just stop the music, so play something instead.
+  // Next: one tap = one track, taps are handled one after another (fast tapping is queued up, not lost or
+  // tangled), and the app waits to see the new track before the next tap is acted on.
+  let nextBusy = false, nextPending = 0;
+  async function waitForChange(fromId, ms = 4000) {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      await sleep(300);
+      const st = await Spotify.playerState().catch(() => null);
+      if (st && st.id !== fromId) return st;
+    }
+    return null;
+  }
+  // Next: decide what should play, make Spotify play exactly that, and check it did.
+  // If Spotify plays something else first (an old track left in its queue, or its own playlist), skip past it
+  // — those stray tracks are dropped, never brought back.
+  const nextLog = [];
   async function smartNext() {
+    if (nextBusy) { nextPending++; return; }
+    nextBusy = true;
+    const logIt = (o) => { nextLog.push(Object.assign({ at: Date.now() }, o)); if (nextLog.length > 10) nextLog.shift(); };
     try {
       if (isLive()) {
         if (!appQ.length) {
           const cur = mixRef().rec, s = cur ? suggest(cur, 1)[0] : null;
-          if (s) { await liveRun(() => liveInsertNext(s.t.id)); await waitUpNext(s.t.id); toast("Nothing was lined up — playing " + s.t.title); }
+          if (s) { await liveRun(() => liveInsertNext(s.t.id)); await waitUpNext(s.t.id); }
         }
-        await Spotify.next(); setTimeout(pollNow, 700); return;
+        await Spotify.next(); await pollNow(); return;
       }
-      if (!handed && appQ.length) {
-        const id = appQ.shift(); saveQ(); await playNow(id);
-        toast("Playing: " + recOf(id, qMeta.get(id)).title); setTimeout(pollNow, 900); return;
-      }
-      if (!handed) {
-        let up = []; try { up = await Spotify.upNext(); } catch (e) {}
-        up = up.filter(t => !np || t.id !== np.id);
-        if (!up.length) {
-          const cur = mixRef().rec, s = cur ? suggest(cur, 1)[0] : null;
-          if (s) { await playNow(s.t.id); toast("Nothing was lined up — playing " + s.t.title); setTimeout(pollNow, 900); return; }
+      // Make sure we know what's really playing right now (fast taps can beat the regular check).
+      const fresh = await Spotify.playerState().catch(() => null);
+      if (fresh && (!np || fresh.id !== np.id)) { np = fresh; if (handed === fresh.id) { handed = ahead.shift() || null; saveQ(); } }
+      const from = np ? np.id : null;
+      let target = null, label = "", how = "";
+      if (handed) { target = handed; how = "lined up"; }
+      else {
+        if (appQ.length) { target = appQ.shift(); how = "your queue"; }
+        else { const cur = mixRef().rec, s = cur ? suggest(cur, 1)[0] : null; if (s) { target = s.t.id; how = "suggestion"; } }
+        if (target) {
+          if (!np || !np.playing) { await Spotify.play(target); logIt({ want: target, got: target, how: how + " (started)" }); toast("Playing: " + recOf(target, qMeta.get(target)).title); await pollNow(); return; }
+          await Spotify.queue(target); handed = target; saveQ(); await sleep(200);
         }
       }
-      await Spotify.next(); setTimeout(pollNow, 700);
+      label = target ? recOf(target, qMeta.get(target)).title : "";
+      await Spotify.next();
+      let st = await waitForChange(from), strays = 0;
+      // Not what we expected? Step past strays until our track plays (bounded).
+      if (target && st && st.id !== target) {
+        let up = []; try { up = (await Spotify.upNext()).map(t => t.id); } catch (e) {}
+        if (!up.includes(target)) { await Spotify.queue(target); }   // our track went missing: put it back
+        for (let k = 0; k < 5 && st && st.id !== target; k++) {
+          strays++; const was = st.id;
+          await Spotify.next(); st = await waitForChange(was);
+        }
+      }
+      logIt({ want: target, got: st ? st.id : null, how, strays, gotTitle: st ? st.title : "" });
+      if (st && st.id === target) { handed = ahead.shift() || null; saveQ(); if (label) toast("Playing: " + label + (strays ? ` (skipped ${strays} stray ${strays === 1 ? "track" : "tracks"} Spotify had waiting)` : "")); }
+      await pollNow();
     } catch (e) { playError(e); }
+    finally {
+      nextBusy = false;
+      if (nextPending > 0) { nextPending--; setTimeout(smartNext, 50); }
+    }
   }
   $("pvNext").onclick = smartNext;
   const devIcon = t => ({ Smartphone: IC.phone, Computer: IC.laptop, Speaker: IC.speaker, TV: IC.tv, CastAudio: IC.speaker, CastVideo: IC.tv, AVR: IC.speaker, Tablet: IC.phone, Automobile: IC.car }[t] || IC.speaker);

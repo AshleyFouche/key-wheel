@@ -173,6 +173,11 @@ export class Brain {
 
     if (url.pathname === "/sync") {
       const now = Date.now();
+      // If the helper changed the queue (played or lined up tracks) after the app last sent it, the helper's
+      // version wins: read it before anything is overwritten, and send it back for the app to adopt.
+      const hQAt = await this.get("helperQAt", 0), helperNewer = hQAt > (body.queueAt || 0);
+      const hQueue = await this.get("queue", []), hHanded = await this.get("handed", null);
+      if (helperNewer) { delete body.queue; delete body.handed; }
       if (body.library && body.libHash) await this.putLibrary(body.library, body.libHash);
       if (body.settings) await this.st.put("settings", body.settings);
       if (body.history) {   // merge the app's plays with the ones the helper saw itself
@@ -182,16 +187,17 @@ export class Brain {
       }
       if (body.queue) { await this.st.put("queue", body.queue); await this.st.put("handed", body.handed || null); await this.st.put("qAt", now); }
       if (body.handingFor) await this.st.put("queuedFor", body.handingFor);
+      if (body.plan) await this.st.put("plan", body.plan);
+      if (body.started) await this.st.put("started", body.started);
       if (body.leaving) await this.st.put("ping", 0); else await this.st.put("ping", now);
       // Hand back what happened while the app was away.
       const since = body.since || 0, acts = (await this.get("acts", [])).filter(a => a.at > since);
-      const helperQAt = await this.get("helperQAt", 0);
       const out = {
         ok: true, now, needLib: (await this.get("libHash", "")) !== body.libHash,
         acts, status: await this.status(),
         // If the helper changed the queue after the app last sent it, the app should take the helper's version.
-        queue: helperQAt > (body.queueAt || 0) ? await this.get("queue", []) : null,
-        handed: helperQAt > (body.queueAt || 0) ? await this.get("handed", null) : undefined
+        queue: helperNewer ? hQueue : null,
+        handed: helperNewer ? hHanded : undefined
       };
       // Make sure the brain is awake to take over if the app goes quiet.
       const al = await this.st.getAlarm(); if (!al || body.leaving || al - now > 20000) await this.st.setAlarm(now + (body.leaving ? 2000 : 15000));
@@ -237,19 +243,21 @@ export class Brain {
         await this.act({ at: now - (p.progress_ms || 0), type: "play", id: item.id, title: item.name, artist: (item.artists || []).map(x => x.name).join(", ") });
       }
       if (!p.is_playing) { await this.note("Paused"); return next(60000); }
-      if (left > LEAD_MS + 10000) { await this.note("Playing — will line up the next track near the end"); return next(Math.min(left - LEAD_MS, 5 * 60000)); }
-      if ((await this.get("queuedFor", null)) === item.id) return next(left + 4000);
+      // Keep exactly one track lined up at all times, and look every 15 s, so skipping (on the lock screen,
+      // in Spotify, on the speaker) never runs the queue dry and lets Spotify fall back to an old track.
+      const soon = Math.min(15000, Math.max(3000, left + 2000));
+      if ((await this.get("queuedFor", null)) === item.id) { await this.note("Playing — next track already lined up"); return next(soon); }
       const handed = await this.get("handed", null);
-      if (handed && handed !== item.id) { await this.st.put("queuedFor", item.id); return next(left + 4000); }   // something is already lined up
+      if (handed && handed !== item.id) { await this.st.put("queuedFor", item.id); await this.note("Playing — next track already lined up"); return next(soon); }
       const pick = await this.choose(item.id);
-      if (!pick) { await this.note("Nothing suitable to line up"); await this.st.put("queuedFor", item.id); return next(left + 4000); }
+      if (!pick) { await this.note("Nothing suitable to line up"); await this.st.put("queuedFor", item.id); return next(soon); }
       try { await this.sp("/me/player/queue?uri=" + encodeURIComponent("spotify:track:" + pick.id), { method: "POST" }); }
       catch (e) { await this.note("Couldn't queue: " + e.message); return next(e.rate ? 15000 : 20000); }
       await this.st.put("queuedFor", item.id); await this.st.put("handed", pick.id); await this.st.put("helperQAt", now);
       if (pick.fromQueue) { const q = await this.get("queue", []); if (q[0] === pick.id) q.shift(); await this.st.put("queue", q); }
       await this.act({ at: now, type: "queue", id: pick.id, after: item.id, why: pick.why });
       await this.note("Lined up the next track");
-      return next(left + 4000);
+      return next(soon);
     } catch (e) {
       await this.log("Error: " + (e && e.message)); return next(60000);
     }
@@ -266,6 +274,11 @@ export class Brain {
     const q = await this.get("queue", []), set = await this.get("settings", {});
     if (q.length) return { id: q[0], fromQueue: true, why: "your queue" };
     if (set.autoPick === false) return null;
+    // 1) The app's plan — the same picks you saw in Suggested next. Follow it while it matches what's playing.
+    const plan = await this.get("plan", []), hist = await this.get("history", []), heard = new Set(hist.slice(-60).map(e => e.id));
+    const step = plan.find(([after, nxt]) => after === playingId && !heard.has(nxt));
+    if (step) return { id: step[1], why: "your plan" };
+    // 2) Off the plan (Spotify played something else): pick fresh with the same rules.
     const lib = await this.library(); if (!lib.length) return null;
     let from = this._byId.get(playingId);
     if (!from || !from.key) {                                            // playing track has no key: follow the last one that did (3 h)
@@ -274,7 +287,7 @@ export class Brain {
     }
     if (!from || !from.key) return null;
     // No repeats within the flow (an hour's gap or a "Start a new flow" tap ends it).
-    const h = await this.get("history", []), breaks = set.flowBreaks || [], skip = new Set([playingId]);
+    const h = await this.get("history", []), breaks = set.flowBreaks || [], skip = new Set([playingId, ...(await this.get("started", []))]);
     for (let i = h.length - 1; i >= 0; i--) {
       if (i < h.length - 1 && (h[i + 1].at - h[i].at > GAP || breaks.some(b => h[i].at < b && b <= h[i + 1].at))) break;
       if (Date.now() - h[i].at > 8 * 3600e3) break; skip.add(h[i].id);

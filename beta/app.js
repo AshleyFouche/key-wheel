@@ -664,7 +664,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.31";
+  const APP_VERSION = "2.32";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -2400,6 +2400,22 @@
   }
   function hashStr(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return String(h >>> 0) + ":" + str.length; }
   function helperSettings() { return { autoPick, dir: state.dir, genres: state.genres, stayGenre, flowBreaks: flowBreaks() }; }
+  // The app's own plan: "after track X, play Y", chained from what's playing (or the end of your queue),
+  // using exactly the same suggestions you see. The helper follows this plan first, so what you saw is what plays.
+  function helperPlan(n = 12) {
+    const plan = [], used = new Set([...(handed ? [handed] : []), ...appQ]);
+    let from = null;
+    const lastQ = appQ.length ? appQ[appQ.length - 1] : handed;
+    if (lastQ && byId.get(lastQ) && byId.get(lastQ).key) from = byId.get(lastQ); else from = mixRef().rec;
+    if (!from || !from.key) return plan;
+    if (np && !lastQ) used.add(np.id);
+    const afterFirst = lastQ || (np ? np.id : from.id);   // the plan's first step follows what actually plays
+    for (let k = 0; k < n; k++) {
+      const top = suggest(from, 8).find(x => !used.has(x.t.id)); if (!top) break;
+      plan.push([k === 0 ? afterFirst : from.id, top.t.id]); used.add(top.t.id); from = top.t;
+    }
+    return plan;
+  }
   let helperBusy = false;
   async function helperSync(opts = {}) {
     if (!helperOn() || (helperBusy && !opts.leaving)) return;
@@ -2408,6 +2424,7 @@
       const rows = libRows(), libHash = hashStr(JSON.stringify(rows));
       const body = { key: helperKey, libHash, settings: helperSettings(), queue: appQ, handed, queueAt: qAt, since: helperSince,
         history: ls.get("kwb.history", []).slice(-200), leaving: !!opts.leaving,
+        plan: autoPick ? helperPlan() : [], started: Object.keys(started).filter(k => Date.now() - started[k] < 3 * 3600e3),
         // The app has already lined up (or is lining up) the next track for what's playing — the helper shouldn't add another.
         handingFor: np && (handed || appQ.length || (typeof autoDone !== "undefined" && autoDone.has(np.id))) ? np.id : null };
       if (opts.withLib) body.library = rows;

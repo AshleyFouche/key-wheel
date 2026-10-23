@@ -76,4 +76,17 @@ await runFor(2000); const n15 = (await brain.decideNext(S.cur)).id, c15 = S.cur;
 await runFor(Math.max(0, DUR[S.cur] - (clock() - S.startedAt)) + 3000);
 ok("hidden-queue speaker: song end plays our Next", S.played[S.played.indexOf(c15) + 1] === n15); await runFor(600000); { const seen = new Map(); S.played.forEach((x, i) => { if (!seen.has(x)) seen.set(x, []); seen.get(x).push(i); }); const d = [...seen].filter(([k, v]) => v.length > 1 && k !== OLD); ok("…and nothing repeats afterwards", !d.length, JSON.stringify(d.map(([k, v]) => [k.slice(0, 5), v]))); }
 S.hideQueue = false;
+// 16) the LS50 "Chemistry" case: Spotify's listing says our track is queued, but the speaker lost it.
+S.queue = [lib[1200][0]]; S.loseQueued = 1; S.phantom = []; S.phantomFirst = false; mem.set("handed", null);
+const want16 = (await brain.decideNext(S.cur)).id; const b16 = S.played.length;
+// the listing will show: stray, then (phantom) our track
+S.phantomFirst = true;
+await call("/cmd", { key, action: "next" });
+ok("listing lies: one press moves exactly one track", S.played.length - b16 === 1, (S.played.length - b16) + " started");
+S.phantom = []; const b16b = S.played.length; await call("/cmd", { key, action: "next" });
+ok("…and the next press lands on our track", S.cur === want16 && S.played.length - b16b === 1, "now " + S.cur.slice(0, 5) + " wanted " + want16.slice(0, 5));
+// 17) the Next tap carries the app's #1, so the brain never guesses after a quick skip
+const pick17 = lib[1300][0];
+await call("/cmd", { key, action: "next", next: { id: pick17, for: S.cur } });
+ok("Next tap uses the app's #1 sent with it", S.cur === pick17);
 console.log("total Spotify calls:", S.calls.length, "| played:", S.played.length);

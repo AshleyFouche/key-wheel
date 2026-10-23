@@ -676,7 +676,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.46";
+  const APP_VERSION = "2.47";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -785,7 +785,7 @@
     if (helperOn()) { try { const r = await fetch(HELPER + "/status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: helperKey }) }); const j = await r.json(); if (j.diag && j.diag.length) { lines.push("BRAIN LOG (newest last):"); j.diag.slice(-8).forEach(d => lines.push(`  ${time(d.at)}  ${d.msg}`)); } } catch (e) { lines.push("BRAIN LOG: couldn't fetch"); } }
     lines.push(`HELPER (brain${helperStat && helperStat.engine ? " engine " + helperStat.engine : ""}): ${!HELPER ? "not set up" : !helperOn() ? "not connected — the app controls Spotify itself" : helperStat ? (helperStat.error || ("in charge" + (helperStat.note ? " · " + helperStat.note : "") + (helperStat.lastCheck ? " · last check " + time(helperStat.lastCheck) : "") + (helperStat.handed ? " · locked in: " + recOf(helperStat.handed, qMeta.get(helperStat.handed)).title : ""))) : "connected, no reply yet"}`);
     if (brainMode() && np) { const cn = computeNext(); lines.push(`NEXT: ${cn ? recOf(cn.id, qMeta.get(cn.id)).title + " (" + NEXT_LABEL[cn.by] + ")" : "nothing — queue empty and Auto-pick off"}`); }
-    lines.push(`AUTO-PICK: ${autoPick ? "on" : "off"} · ${autoLog ? time(autoLog.at) + " (" + autoLog.why + ", playing " + autoLog.playing + "): " + autoLog.msg : "hasn't run yet"}`);
+    if (!brainMode()) lines.push(`AUTO-PICK: ${autoPick ? "on" : "off"} · ${autoLog ? time(autoLog.at) + " (" + autoLog.why + ", playing " + autoLog.playing + "): " + autoLog.msg : "hasn't run yet"}`);
     { const ref = mixRef(); lines.push(`FOLLOWING: ${ref.rec ? ref.rec.title + " " + (ref.rec.key || "?") + (ref.fallback ? " (last keyed track — the playing one isn't in your library)" : "") : "nothing — the playing track isn't in your keyed library and none was in the last 3 hours"}`); }
     { const h = FlowGenres.health(), done = T.filter(t => genre[t.id]).length;
       lines.push(`GENRES: ${done} of ${T.length} checked · ${h.running ? "running" : "not running"} · switched ${ls.get("kwb.genreOn", false) ? "on" : "off"}${h.lastAt ? " · last progress " + time(h.lastAt) : ""}${h.skipped ? " · " + h.skipped + " skipped this session" : ""}${h.lastErr ? " · " + h.lastErr : ""}`); }
@@ -1208,7 +1208,7 @@
   // — those stray tracks are dropped, never brought back.
   const nextLog = [];
   async function smartNext() {
-    if (brainMode()) return brainCmd({ action: "next" });
+    if (brainMode()) { const cn = np ? computeNext() : null; return brainCmd({ action: "next", next: np && cn && cn.by !== "locked" ? { id: cn.id, for: np.id } : null }); }
     if (nextBusy) { nextPending++; return; }
     nextBusy = true;
     const logIt = (o) => { nextLog.push(Object.assign({ at: Date.now() }, o)); if (nextLog.length > 10) nextLog.shift(); };

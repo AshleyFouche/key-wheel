@@ -308,8 +308,11 @@ export class Brain {
     // a track we handed over for THIS song is trusted; we never queue the same track twice.
     let handed = await this.get("handed", null), handedFor = await this.get("handedFor", null), target = null, d = null;
     let up = await this.upNext().catch(() => null);
+    // "Ghosts": tracks Spotify's listing claimed were queued, but which never arrived. Don't believe the listing about them.
+    const ghosts = new Set(await this.get("ghosts", []));
+    if (up) up = up.filter(id => !ghosts.has(id));
     // Trust our hand-over if Spotify lists it — or if Spotify lists nothing at all (some speakers don't report the queue).
-    if (handed && ((up && up.includes(handed)) || (handedFor === p.id && (!up || !up.length)))) target = handed;
+    if (handed && ((up && up.includes(handed)) || (handedFor === p.id && (!up || !up.length || ghosts.has(handed))))) target = handed;
     else {
       if (handed) { await this.st.put("handed", null); await this.st.put("handedFor", null); }
       d = await this.decideNext(p.id);
@@ -344,6 +347,17 @@ export class Brain {
         }
         now = await this.waitChange(from); if (!now) break;
         from = now.id; if (!target || now.id === target) break; strays++;
+        // Before skipping again, check Spotify's listing agrees our track is now closer. If it doesn't, the listing
+        // can't be trusted: stop here (one press = one track), and put our track back in properly for next time.
+        const up2 = await this.upNext().catch(() => null), i2 = up2 ? up2.indexOf(target) : -1;
+        if (!(i2 >= 0 && idx >= 0 && i2 < idx - (k))) {
+          if (!up2 || !up2.length) break;           // speaker shows no queue at all: just stop, don't add duplicates
+          ghosts.add(target); await this.st.put("ghosts", [...ghosts].slice(-30));
+          await this.log("Spotify's queue listing was wrong about the next track — re-adding it");
+          await this.sp("/me/player/queue?uri=" + encodeURIComponent("spotify:track:" + target), { method: "POST" });
+          await this.st.put("handed", target); await this.st.put("handedFor", now.id);
+          break;
+        }
       }
     }
     if (now) await this.onNewTrack(now, true);
@@ -368,6 +382,7 @@ export class Brain {
   async cmd(b) {
     try {
       const p = await this.player();
+      if (b.next && b.next.id && b.next.for) await this.st.put("appNext", b.next);
       if (b.action === "next") {
         if (!p) { await this.sp("/me/player/next", { method: "POST" }).catch(() => {}); return this.json({ ok: true, state: await this.view() }); }
         if ((await this.get("cur", {})).id !== p.id) await this.onNewTrack(p, true);

@@ -63,4 +63,7 @@ await call("/sync", { key, libHash: "h", queue: [], queueAt: clock() + 1 }); awa
 const cur12 = S.cur, n12 = (await brain.decideNext(S.cur)).id;
 await runFor(Math.max(0, DUR[S.cur] - (clock() - S.startedAt)) + 3000);
 ok("over a playlist, the end of a song plays our Next", S.played.slice(S.played.indexOf(cur12) + 1, S.played.indexOf(cur12) + 3).includes(n12), "(a stray left over from step 10 may blip first) wanted " + n12.slice(0,5) + " handed " + String(mem.get("handed")).slice(0,5) + " played " + S.played.slice(-3).map(x=>x.slice(0,5)).join(",") + " diag " + JSON.stringify((mem.get("diag")||[]).slice(-3).map(d=>d.msg)));
+// 13) Spotify refuses to skip ("Restriction violated") → Next still lands, by starting it directly
+S.noSkip = true; const want13 = (await brain.decideNext(S.cur)).id; const [st13, r13] = await call("/cmd", { key, action: "next" }); S.noSkip = false;
+ok("'Restriction violated' on skip: Next starts the track directly", st13 === 200 && S.cur === want13, st13 + " " + (r13.error || ""));
 console.log("total Spotify calls:", S.calls.length, "| played:", S.played.length);

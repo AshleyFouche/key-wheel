@@ -136,9 +136,21 @@ export class Brain {
   async player() {
     const p = await this.sp("/me/player");
     if (!p || !p.item || p.item.type !== "track") return null;
-    return { id: p.item.id, title: p.item.name, artist: (p.item.artists || []).map(x => x.name).join(", "), dur: p.item.duration_ms, prog: p.progress_ms || 0, playing: !!p.is_playing, device: p.device || {}, at: Date.now() };
+    return { id: p.item.id, title: p.item.name, artist: (p.item.artists || []).map(x => x.name).join(", "), dur: p.item.duration_ms, prog: p.progress_ms || 0, playing: !!p.is_playing, device: p.device || {}, at: Date.now(),
+      noSkip: !!(p.actions && p.actions.disallows && p.actions.disallows.skipping_next) };
   }
   // Spotify's up-next list: tracks queued by apps first, then the playlist it's playing from.
+  // Skip; if Spotify refuses ("Restriction violated" — it happens with some speakers and single-track play),
+  // start the wanted track directly instead.
+  async skipTo(p, target) {
+    if (!p.noSkip) {
+      try { await this.sp("/me/player/next", { method: "POST" }); return "skip"; }
+      catch (e) { if (!(e.status === 403 || /restriction/i.test(e.message))) throw e; await this.log("Spotify refused to skip (" + e.message + ") — starting the track directly"); }
+    }
+    if (!target) throw new Error("Spotify won't skip here and there's nothing to start instead");
+    await this.sp("/me/player/play", { method: "PUT", body: JSON.stringify({ uris: ["spotify:track:" + target] }) });
+    return "direct";
+  }
   async upNext() { const j = await this.sp("/me/player/queue"); return ((j && j.queue) || []).filter(t => t && t.id).map(t => t.id); }
   async waitChange(fromId, ms = 5000) {
     const end = Date.now() + ms;
@@ -164,7 +176,7 @@ export class Brain {
   // ----- HTTP -----
   async fetch(req) {
     const url = new URL(req.url), body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
-    if (url.pathname === "/" || url.pathname === "/health") return this.json({ ok: true, service: "ashflow-helper", engine: 3, connected: !!(await this.get("auth", null)) });
+    if (url.pathname === "/" || url.pathname === "/health") return this.json({ ok: true, service: "ashflow-helper", engine: 4, connected: !!(await this.get("auth", null)) });
     if (url.pathname === "/connect" && req.method === "POST") return this.connect(body);
     const key = await this.get("key", null);
     if (!key || body.key !== key) return this.json({ error: "not connected" }, 401);
@@ -195,7 +207,7 @@ export class Brain {
   // The app shares its plan; the brain answers with what it's doing.
   async sync(b) {
     const now = Date.now();
-    if ((await this.get("engine", 1)) < 3) { for (const k of ["handed", "handedFor", "queuedFor", "ping", "verified", "lastSeen"]) await this.st.delete(k); await this.st.put("engine", 3); await this.log("Engine 3: cleared old state"); }
+    if ((await this.get("engine", 1)) < 4) { for (const k of ["handed", "handedFor", "queuedFor", "ping", "verified", "lastSeen", "plan", "appNext", "strays", "cur"]) await this.st.delete(k); await this.st.put("engine", 4); await this.log("Engine 4: cleared old state"); }
     if (b.library && b.libHash) await this.putLibrary(b.library, b.libHash);
     if (b.settings) await this.st.put("settings", b.settings);
     if (b.started) await this.st.put("started", b.started);
@@ -218,7 +230,7 @@ export class Brain {
 
   async view() {
     const a = await this.get("auth", null);
-    return { connected: !!a, dead: !!(a && a.dead), cur: await this.get("cur", null), handed: await this.get("handed", null),
+    return { engine: 4, connected: !!a, dead: !!(a && a.dead), cur: await this.get("cur", null), handed: await this.get("handed", null),
       handedFor: await this.get("handedFor", null), lastCheck: await this.get("lastCheck", 0), note: await this.get("note", ""), lastAct: await this.get("lastAct", null) };
   }
   async note(s) { await this.st.put("note", s); }
@@ -303,12 +315,13 @@ export class Brain {
     let now = null, strays = 0, direct = false;
     const idx = target && up ? up.indexOf(target) : -1;
     if (idx > 0) await this.addStrays(up.slice(0, idx));
-    if (!target) { await this.sp("/me/player/next", { method: "POST" }); now = await this.waitChange(p.id); }
+    if (!target) { await this.skipTo(p, null); now = await this.waitChange(p.id); }
     else if (idx === 0 || (idx < 0 && p.device && p.device.type === "Smartphone")) {
-      await this.sp("/me/player/next", { method: "POST" }); now = await this.waitChange(p.id);
-    } else if (idx > 0 && idx <= 3) {
+      if ((await this.skipTo(p, target)) === "direct") direct = true;
+      now = await this.waitChange(p.id);
+    } else if (idx > 0 && idx <= 3 && !p.noSkip) {
       let from = p.id;
-      for (let k = 0; k <= idx; k++) { await this.sp("/me/player/next", { method: "POST" }); now = await this.waitChange(from); if (!now) break; from = now.id; if (now.id === target) break; strays++; }
+      for (let k = 0; k <= idx; k++) { const how = await this.skipTo({ id: from }, target); now = await this.waitChange(from); if (how === "direct") { direct = true; break; } if (!now) break; from = now.id; if (now.id === target) break; strays++; }
     } else {
       // Too many strays (or Spotify isn't listing it): start our track directly instead of skipping through them.
       direct = true;
@@ -330,7 +343,7 @@ export class Brain {
     try {
       const p = await this.player();
       if (b.action === "next") {
-        if (!p) { await this.sp("/me/player/next", { method: "POST" }); return this.json({ ok: true, state: await this.view() }); }
+        if (!p) { await this.sp("/me/player/next", { method: "POST" }).catch(() => {}); return this.json({ ok: true, state: await this.view() }); }
         if ((await this.get("cur", {})).id !== p.id) await this.onNewTrack(p, true);
         const r = await this.goNext(p, "next button");
         await this.st.setAlarm(Date.now() + 2000);
@@ -344,7 +357,7 @@ export class Brain {
         } else if (p.device && p.device.type === "Smartphone") {
           // Direct play has knocked the iPhone off Spotify before: queue it and skip to it instead.
           await this.sp("/me/player/queue?uri=" + encodeURIComponent("spotify:track:" + b.id), { method: "POST" }); await sleep(250);
-          await this.sp("/me/player/next", { method: "POST" });
+          await this.skipTo(p, b.id);
         } else {
           await this.sp("/me/player/play", { method: "PUT", body: JSON.stringify({ uris: ["spotify:track:" + b.id] }) });
         }

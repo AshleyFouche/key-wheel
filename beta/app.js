@@ -664,7 +664,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.41";
+  const APP_VERSION = "2.42";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -770,7 +770,7 @@
     if (nextLog.length) { lines.push("NEXT PRESSES (newest last):"); nextLog.forEach(n => lines.push(`  ${time(n.at)}  wanted ${n.want ? recOf(n.want, qMeta.get(n.want)).title : "—"} (${n.how}) → got ${n.got === n.want ? "✓" : (n.gotTitle || n.got || "nothing")}${n.strays ? " · skipped " + n.strays + " stray" : ""}`)); }
     { const hp = Object.entries(typeof helperPicks !== "undefined" ? helperPicks : {}).sort((a, b) => a[1].at - b[1].at).slice(-5);
       if (hp.length) { lines.push("HELPER PICKS (newest last):"); hp.forEach(([id, v]) => lines.push(`  ${time(v.at)}  ${recOf(id, qMeta.get(id)).title} — ${v.why === "your plan" ? "your top suggestion (plan)" : v.why || "?"}`)); } }
-    lines.push(`HELPER (brain): ${!HELPER ? "not set up" : !helperOn() ? "not connected — the app controls Spotify itself" : helperStat ? (helperStat.error || ("in charge" + (helperStat.note ? " · " + helperStat.note : "") + (helperStat.lastCheck ? " · last check " + time(helperStat.lastCheck) : "") + (helperStat.handed ? " · locked in: " + recOf(helperStat.handed, qMeta.get(helperStat.handed)).title : ""))) : "connected, no reply yet"}`);
+    lines.push(`HELPER (brain${helperStat && helperStat.engine ? " engine " + helperStat.engine : ""}): ${!HELPER ? "not set up" : !helperOn() ? "not connected — the app controls Spotify itself" : helperStat ? (helperStat.error || ("in charge" + (helperStat.note ? " · " + helperStat.note : "") + (helperStat.lastCheck ? " · last check " + time(helperStat.lastCheck) : "") + (helperStat.handed ? " · locked in: " + recOf(helperStat.handed, qMeta.get(helperStat.handed)).title : ""))) : "connected, no reply yet"}`);
     if (brainMode() && np) { const cn = computeNext(); lines.push(`NEXT: ${cn ? recOf(cn.id, qMeta.get(cn.id)).title + " (" + NEXT_LABEL[cn.by] + ")" : "nothing — queue empty and Auto-pick off"}`); }
     lines.push(`AUTO-PICK: ${autoPick ? "on" : "off"} · ${autoLog ? time(autoLog.at) + " (" + autoLog.why + ", playing " + autoLog.playing + "): " + autoLog.msg : "hasn't run yet"}`);
     { const ref = mixRef(); lines.push(`FOLLOWING: ${ref.rec ? ref.rec.title + " " + (ref.rec.key || "?") + (ref.fallback ? " (last keyed track — the playing one isn't in your library)" : "") : "nothing — the playing track isn't in your keyed library and none was in the last 3 hours"}`); }

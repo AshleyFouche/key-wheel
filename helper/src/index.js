@@ -7,7 +7,7 @@
 
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const API = "https://api.spotify.com/v1";
-const PRESENT_MS = 120000;          // app pinged within this → app is in charge
+const PRESENT_MS = 40000;           // app pinged within this → app is in charge (it pings every 15 s while open)
 const LEAD_MS = 90000;              // queue the next track this long before the end
 const GAP = 60 * 60 * 1000;         // an hour's break starts a new flow
 const LIB_CHUNK = 700;              // tracks per stored chunk (storage values are capped)
@@ -193,7 +193,7 @@ export class Brain {
         handed: helperQAt > (body.queueAt || 0) ? await this.get("handed", null) : undefined
       };
       // Make sure the brain is awake to take over if the app goes quiet.
-      const al = await this.st.getAlarm(); if (!al || body.leaving) await this.st.setAlarm(now + (body.leaving ? 3000 : PRESENT_MS + 5000));
+      const al = await this.st.getAlarm(); if (!al || body.leaving || al - now > 20000) await this.st.setAlarm(now + (body.leaving ? 2000 : 15000));
       return this.json(out);
     }
     if (url.pathname === "/status") return this.json({ ok: true, status: await this.status(), diag: await this.get("diag", []) });
@@ -214,7 +214,8 @@ export class Brain {
     try {
       const a = await this.get("auth", null);
       if (!a || a.dead) return;                                          // not connected: sleep until the app connects
-      if (now - (await this.get("ping", 0)) < PRESENT_MS) { await this.note("Standing by — the app is open"); return next(60000); }
+      // While the app is open, check back every 15 s, so a locked phone (which may not say goodbye) is noticed fast.
+      if (now - (await this.get("ping", 0)) < PRESENT_MS) { await this.note("Standing by — the app is open"); return next(15000); }
       await this.st.put("lastCheck", now);
       let p;
       try { p = await this.sp("/me/player"); }

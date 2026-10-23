@@ -664,7 +664,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.29";
+  const APP_VERSION = "2.30";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -2421,7 +2421,7 @@
     } catch (e) { helperStat = { error: "Couldn't reach the helper" }; paintHelper(); }
     finally { helperBusy = false; }
   }
-  setInterval(() => { if (document.visibilityState === "visible") helperSync(); }, 30000);
+  setInterval(() => { if (document.visibilityState === "visible") helperSync(); }, 15000);   // the helper takes over ~40 s after these stop
   document.addEventListener("visibilitychange", () => { if (!helperOn()) return; if (document.visibilityState === "hidden") helperSync({ leaving: true }); else helperSync(); });
   window.addEventListener("pagehide", () => { if (helperOn()) helperSync({ leaving: true }); });
   async function helperConnected(tokens) {

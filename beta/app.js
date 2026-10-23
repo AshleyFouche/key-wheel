@@ -664,7 +664,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.33";
+  const APP_VERSION = "2.34";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -768,6 +768,8 @@
       }
     } catch (e) { lines.push("MIX CHECK failed: " + e.message); }
     if (nextLog.length) { lines.push("NEXT PRESSES (newest last):"); nextLog.forEach(n => lines.push(`  ${time(n.at)}  wanted ${n.want ? recOf(n.want, qMeta.get(n.want)).title : "—"} (${n.how}) → got ${n.got === n.want ? "✓" : (n.gotTitle || n.got || "nothing")}${n.strays ? " · skipped " + n.strays + " stray" : ""}`)); }
+    { const hp = Object.entries(typeof helperPicks !== "undefined" ? helperPicks : {}).sort((a, b) => a[1].at - b[1].at).slice(-5);
+      if (hp.length) { lines.push("HELPER PICKS (newest last):"); hp.forEach(([id, v]) => lines.push(`  ${time(v.at)}  ${recOf(id, qMeta.get(id)).title} — ${v.why === "your plan" ? "your top suggestion (plan)" : v.why || "?"}`)); } }
     lines.push(`HELPER: ${!HELPER ? "not set up" : !helperOn() ? "not connected" : helperStat ? (helperStat.error || ((helperStat.appPresent ? "standing by" : "running") + (helperStat.lastNote ? " · " + helperStat.lastNote : "") + (helperStat.lastCheck ? " · last check " + time(helperStat.lastCheck) : ""))) : "connected, no reply yet"}`);
     lines.push(`AUTO-PICK: ${autoPick ? "on" : "off"} · ${autoLog ? time(autoLog.at) + " (" + autoLog.why + ", playing " + autoLog.playing + "): " + autoLog.msg : "hasn't run yet"}`);
     { const ref = mixRef(); lines.push(`FOLLOWING: ${ref.rec ? ref.rec.title + " " + (ref.rec.key || "?") + (ref.fallback ? " (last keyed track — the playing one isn't in your library)" : "") : "nothing — the playing track isn't in your keyed library and none was in the last 3 hours"}`); }
@@ -1090,6 +1092,7 @@
       else if (np && ahead.includes(np.id)) { const k = ahead.indexOf(np.id); ahead = ahead.slice(k + 1); handed = ahead.shift() || null; saveQ(); }
       if (np && np.id !== lastNpId) {
         lastNpId = np.id; noteStarted(np.id);
+        if (typeof helperOn === "function" && helperOn()) setTimeout(() => helperSync(), 1500);   // fresh plan for the helper at every track change
         liveTrack(); checkHanded(); headsKey = "";
         if (!$("view-playing").hidden) paintSuggest();
         if (follow) { const rec = byId.get(np.id); if (rec && rec.key && (!state.anchor || state.anchor.id !== rec.id)) setAnchor(rec, false, true); }
@@ -1482,7 +1485,8 @@
       lab.textContent = !rec.key ? "No key yet" : !prev || !prev.key ? "" : m ? MOVE_NAME[m] : "Key clash";
       if (rec.key && prev && prev.key && !m) lab.style.color = "var(--warn)";
       const tt = r.querySelector(".tt");
-      if (locked) { const lk = document.createElement("div"); lk.className = "lock"; lk.textContent = i === 0 ? "Next · sent to Spotify" : "Lined up in Spotify"; tt.prepend(lk); }
+      if (locked) { const lk = document.createElement("div"); lk.className = "lock"; const hp = typeof helperPicks !== "undefined" && helperPicks[id];
+        lk.textContent = (i === 0 ? "Next · sent to Spotify" : "Lined up in Spotify") + (hp ? " · picked by the helper" + (hp.why === "your plan" ? " (your top suggestion at the time)" : hp.why === "your queue" ? " (from your queue)" : hp.why ? " (" + ({ same: "same key", adj: "one step", rel: "mood switch", boost: "energy boost", diag: "diagonal", "key change": "key change" }[hp.why] || hp.why) + ")" : "") : ""); tt.prepend(lk); }
       if (lab.textContent) tt.prepend(lab);
       box.appendChild(r);
       prev = rec;
@@ -2437,6 +2441,7 @@
   // When the pings stop, the helper keeps lining up the next track. Back in the app, it reports what played.
   const HELPER = (window.CONFIG && window.CONFIG.helperUrl) || "";
   let helperKey = ls.get("kwb.helperKey", ""), helperStat = null, helperSince = ls.get("kwb.helperSince", 0);
+  var helperPicks = ls.get("kwb.helperPicks", {});
   const helperOn = () => !!(HELPER && helperKey);
   function libRows() {
     return T.map(t => { const g = gOf(t.id); return [t.id, t.key, t.tempo || 0, g ? g.f : null, g ? (g.s || []).slice(0, 4) : [], [...(t.src || []), ...(t.crates || [])]]; });
@@ -2480,6 +2485,8 @@
       if (j.acts && j.acts.length) {
         addHistory(j.acts.filter(a => a.type === "play").map(a => ({ id: a.id, title: a.title, artist: a.artist, at: a.at, src: "helper" })));
         helperSince = Math.max(helperSince, ...j.acts.map(a => a.at)); ls.set("kwb.helperSince", helperSince);
+        j.acts.filter(a => a.type === "queue").forEach(a => { helperPicks[a.id] = { at: a.at, why: a.why || "" }; });
+        ls.set("kwb.helperPicks", Object.fromEntries(Object.entries(helperPicks).slice(-30)));
         const q = j.acts.filter(a => a.type === "queue").length;
         if (q && !opts.leaving) toast(`While you were away the helper lined up ${q} ${q === 1 ? "track" : "tracks"}`);
       }

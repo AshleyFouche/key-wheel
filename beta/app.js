@@ -664,7 +664,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.42";
+  const APP_VERSION = "2.43";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -770,6 +770,7 @@
     if (nextLog.length) { lines.push("NEXT PRESSES (newest last):"); nextLog.forEach(n => lines.push(`  ${time(n.at)}  wanted ${n.want ? recOf(n.want, qMeta.get(n.want)).title : "—"} (${n.how}) → got ${n.got === n.want ? "✓" : (n.gotTitle || n.got || "nothing")}${n.strays ? " · skipped " + n.strays + " stray" : ""}`)); }
     { const hp = Object.entries(typeof helperPicks !== "undefined" ? helperPicks : {}).sort((a, b) => a[1].at - b[1].at).slice(-5);
       if (hp.length) { lines.push("HELPER PICKS (newest last):"); hp.forEach(([id, v]) => lines.push(`  ${time(v.at)}  ${recOf(id, qMeta.get(id)).title} — ${v.why === "your plan" ? "your top suggestion (plan)" : v.why || "?"}`)); } }
+    if (helperOn()) { try { const r = await fetch(HELPER + "/status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: helperKey }) }); const j = await r.json(); if (j.diag && j.diag.length) { lines.push("BRAIN LOG (newest last):"); j.diag.slice(-8).forEach(d => lines.push(`  ${time(d.at)}  ${d.msg}`)); } } catch (e) { lines.push("BRAIN LOG: couldn't fetch"); } }
     lines.push(`HELPER (brain${helperStat && helperStat.engine ? " engine " + helperStat.engine : ""}): ${!HELPER ? "not set up" : !helperOn() ? "not connected — the app controls Spotify itself" : helperStat ? (helperStat.error || ("in charge" + (helperStat.note ? " · " + helperStat.note : "") + (helperStat.lastCheck ? " · last check " + time(helperStat.lastCheck) : "") + (helperStat.handed ? " · locked in: " + recOf(helperStat.handed, qMeta.get(helperStat.handed)).title : ""))) : "connected, no reply yet"}`);
     if (brainMode() && np) { const cn = computeNext(); lines.push(`NEXT: ${cn ? recOf(cn.id, qMeta.get(cn.id)).title + " (" + NEXT_LABEL[cn.by] + ")" : "nothing — queue empty and Auto-pick off"}`); }
     lines.push(`AUTO-PICK: ${autoPick ? "on" : "off"} · ${autoLog ? time(autoLog.at) + " (" + autoLog.why + ", playing " + autoLog.playing + "): " + autoLog.msg : "hasn't run yet"}`);
@@ -2085,7 +2086,7 @@
     const cur = mixRef().rec, s = cur ? suggest(cur, 1)[0] : null;
     return s ? { id: s.t.id, by: "suggestion", wide: !!s.wide } : null;
   }
-  const NEXT_LABEL = { locked: "Locked in — Spotify has it", queue: "From your queue", suggestion: "Your #1 suggestion" };
+  const NEXT_LABEL = { locked: "already with Spotify", queue: "From your queue", suggestion: "Your #1 suggestion" };
   let headsKey = "";
   function paintHeads() {
     const box = $("npHeads"), st = headsState();
@@ -2218,6 +2219,7 @@
   // The "Next" box on the Playing tab: one clear answer to "what plays after this?"
   function paintNextBox() {
     const box = $("pvNextBox"); if (!box) return;
+    box.hidden = true; return;   // removed at Ash's request — the "▶ Plays next" mark in the list is enough
     if (!brainMode() || !np) { box.hidden = true; return; }
     const cn = computeNext();
     box.hidden = false;

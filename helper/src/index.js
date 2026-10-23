@@ -130,7 +130,9 @@ export class Brain {
     if (r.status === 204 || r.status === 202) return null;
     if (r.status === 429) { const e = new Error("Spotify is busy"); e.rate = parseInt(r.headers.get("Retry-After") || "10", 10); throw e; }
     const t = await r.text(); let j = null; try { j = t ? JSON.parse(t) : null; } catch (e) {}
-    if (!r.ok) { const e = new Error((j && j.error && (j.error.message || j.error)) || ("Spotify error " + r.status)); e.status = r.status; e.reason = j && j.error && j.error.reason; throw e; }
+    if (!r.ok) { const e = new Error((j && j.error && (j.error.message || j.error)) || ("Spotify error " + r.status)); e.status = r.status; e.reason = j && j.error && j.error.reason;
+      if (path !== "/me/player/queue" || (opts.method || "GET") !== "GET") await this.log(`${opts.method || "GET"} ${path.split("?")[0]} → ${r.status} ${e.message}${e.reason ? " (" + e.reason + ")" : ""}`);
+      throw e; }
     return j;
   }
   async player() {
@@ -148,7 +150,8 @@ export class Brain {
       catch (e) { if (!(e.status === 403 || /restriction/i.test(e.message))) throw e; await this.log("Spotify refused to skip (" + e.message + ") — starting the track directly"); }
     }
     if (!target) throw new Error("Spotify won't skip here and there's nothing to start instead");
-    await this.sp("/me/player/play", { method: "PUT", body: JSON.stringify({ uris: ["spotify:track:" + target] }) });
+    const dev = p.device && p.device.id ? "?device_id=" + encodeURIComponent(p.device.id) : "";
+    await this.sp("/me/player/play" + dev, { method: "PUT", body: JSON.stringify({ uris: ["spotify:track:" + target] }) });
     return "direct";
   }
   async upNext() { const j = await this.sp("/me/player/queue"); return ((j && j.queue) || []).filter(t => t && t.id).map(t => t.id); }

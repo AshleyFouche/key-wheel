@@ -1,0 +1,16 @@
+name = "ashflow-helper"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[vars]
+SPOTIFY_CLIENT_ID = "2d4d55ba2ed349af99c52a75decf7db0"
+ALLOWED_ORIGIN = "https://ashleyfouche.github.io"
+
+[[durable_objects.bindings]]
+name = "BRAIN"
+class_name = "Brain"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Brain"]

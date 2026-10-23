@@ -664,7 +664,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.43";
+  const APP_VERSION = "2.44";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -2105,6 +2105,7 @@
       return;
     }
     headsKey = key;
+    if (typeof paintSuggest === "function") paintSuggest();   // keep the list in step with the strip (same #1, same order)
     box.hidden = false; document.body.classList.add("has-heads");
     let html = `<div class="hline ${st.mode}"><span class="hclock">${clock} left</span><span class="hmsg">`;
     if (st.mode === "empty") html += "Queue is empty — pick what plays next";
@@ -2216,6 +2217,7 @@
     });
     paintNextBox();
   }
+  setInterval(() => { if (!$("view-playing").hidden && document.visibilityState === "visible") paintSuggest(); }, 20000);
   // The "Next" box on the Playing tab: one clear answer to "what plays after this?"
   function paintNextBox() {
     const box = $("pvNextBox"); if (!box) return;

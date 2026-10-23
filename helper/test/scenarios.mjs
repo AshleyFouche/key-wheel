@@ -66,4 +66,14 @@ ok("over a playlist, the end of a song plays our Next", S.played.slice(S.played.
 // 13) Spotify refuses to skip ("Restriction violated") → Next still lands, by starting it directly
 S.noSkip = true; const want13 = (await brain.decideNext(S.cur)).id; const [st13, r13] = await call("/cmd", { key, action: "next" }); S.noSkip = false;
 ok("'Restriction violated' on skip: Next starts the track directly", st13 === 200 && S.cur === want13, st13 + " " + (r13.error || ""));
+// 14) LS50-style speaker: doesn't list its queue, and refuses the first skip after a queue add
+S.hideQueue = true; S.queue = []; mem.set("handed", null);
+const b14 = S.played.length; let ok14 = true;
+for (let i = 0; i < 3; i++) { const want = (await brain.decideNext(S.cur)).id; S.refuse = 1; const [st] = await call("/cmd", { key, action: "next" }); if (st !== 200 || S.cur !== want) ok14 = false; }
+ok("speaker hides its queue + refuses first skip: 3 presses = 3 right tracks", ok14 && S.played.length - b14 === 3, (S.played.length - b14) + " started");
+// 15) …and the natural end still plays our Next on that speaker
+await runFor(2000); const n15 = (await brain.decideNext(S.cur)).id, c15 = S.cur;
+await runFor(Math.max(0, DUR[S.cur] - (clock() - S.startedAt)) + 3000);
+ok("hidden-queue speaker: song end plays our Next", S.played[S.played.indexOf(c15) + 1] === n15); await runFor(600000); { const seen = new Map(); S.played.forEach((x, i) => { if (!seen.has(x)) seen.set(x, []); seen.get(x).push(i); }); const d = [...seen].filter(([k, v]) => v.length > 1 && k !== OLD); ok("…and nothing repeats afterwards", !d.length, JSON.stringify(d.map(([k, v]) => [k.slice(0, 5), v]))); }
+S.hideQueue = false;
 console.log("total Spotify calls:", S.calls.length, "| played:", S.played.length);

@@ -664,7 +664,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.44";
+  const APP_VERSION = "2.45";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1987,7 +1987,9 @@
       const ex = x.m === "same" && from.tempo && x.t.tempo === from.tempo, g = gOf(x.t.id), same = !fg || !g || g.f === fg.f;
       return ex && same ? 3 : same && fg && g ? 2 : ex ? 1 : 0;
     };
-    if (out.length) return out.sort((a, b) => exact(b) - exact(a) || b.sc - a.sc).slice(0, n);
+    // With a direction set (Build / Hold / Cool), the direction leads (its score already favours the same genre);
+    // with "Any", exact matches and same-genre tracks come first.
+    if (out.length) return out.sort((a, b) => state.dir === "any" ? (exact(b) - exact(a) || b.sc - a.sc) : (b.sc - a.sc)).slice(0, n);
     // The fallback only leaves out what really played (30 s or more) this flow — not tracks that were
     // merely started or skipped past — so a well-used playlist doesn't look empty.
     const hard = playedThisFlow(true); hard.add(from.id); if (handed) hard.add(handed); ahead.forEach(id => hard.add(id)); appQ.forEach(id => hard.add(id));

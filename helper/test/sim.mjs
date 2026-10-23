@@ -25,6 +25,8 @@ globalThis.fetch = async (url, opts = {}) => {
   advanceNatural();
   S.calls.push(m + " " + url.replace("https://api.spotify.com/v1", ""));
   if (url.endsWith("/me/player") && m === "GET") return S.cur ? res(200, { is_playing: S.playing, progress_ms: now - S.startedAt, device: S.device, actions: { disallows: {} }, item: { type: "track", id: S.cur, name: "T" + S.cur.slice(0, 4), duration_ms: DUR[S.cur] || 200000, artists: [{ name: "A" }] } }) : res(204);
+  if (url.endsWith("/me/player/queue") && m === "GET" && S.hideQueue) return res(200, { queue: [] });
+  if (url.includes("/me/player/next") && S.refuse > 0) { S.refuse--; return res(403, { error: { status: 403, message: "Player command failed: Restriction violated", reason: "UNKNOWN" } }); }
   if (url.endsWith("/me/player/queue") && m === "GET") { const ctxNext = []; for (let k = 0; k < 10 && S.context.length; k++) ctxNext.push(S.context[(S.ctxPos + k) % S.context.length]); return res(200, { queue: S.queue.concat(ctxNext).map(id => ({ type: "track", id })) }); }
   if (url.includes("/me/player/queue") && m === "POST") { S.queue.push(decodeURIComponent(url.split("uri=")[1]).split(":")[2]); return res(204); }
   if (url.includes("/me/player/next") && S.noSkip) return res(403, { error: { status: 403, message: "Player command failed: Restriction violated", reason: "UNKNOWN" } });

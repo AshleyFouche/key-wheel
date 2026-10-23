@@ -30,6 +30,7 @@ globalThis.fetch = async (url, opts = {}) => {
   if (url.endsWith("/me/player/queue") && m === "GET") { const ctxNext = []; for (let k = 0; k < 10 && S.context.length; k++) ctxNext.push(S.context[(S.ctxPos + k) % S.context.length]); return res(200, { queue: (S.phantomFirst ? S.phantom.concat(S.queue) : S.queue).concat(ctxNext).map(id => ({ type: "track", id })) }); }
   if (url.includes("/me/player/queue") && m === "POST" && S.loseQueued > 0) { S.loseQueued--; S.phantom.push(decodeURIComponent(url.split("uri=")[1]).split(":")[2]); return res(204); }
   if (url.includes("/me/player/queue") && m === "POST") { S.queue.push(decodeURIComponent(url.split("uri=")[1]).split(":")[2]); return res(204); }
+  if (url.includes("/me/player/previous")) { const i = S.played.length - 2; if (i >= 0) { S.cur = S.played[i]; S.startedAt = now; S.played.push(S.cur); } return res(204); }
   if (url.includes("/me/player/next") && S.noSkip) return res(403, { error: { status: 403, message: "Player command failed: Restriction violated", reason: "UNKNOWN" } });
   if (url.includes("/me/player/next")) { const nxt = S.queue.length ? S.queue.shift() : S.context[S.ctxPos++ % S.context.length]; startTrack(nxt); return res(204); }
   if (url.includes("/me/player/play") && m === "PUT") { const b = JSON.parse(opts.body || "{}"); if (b.uris) { S.context = [b.uris[0].split(":")[2]]; S.ctxPos = 0; startTrack(S.context[0]); S.ctxPos = 1; } S.playing = true; return res(204); }

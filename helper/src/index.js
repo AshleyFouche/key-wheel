@@ -390,6 +390,16 @@ export class Brain {
         await this.st.setAlarm(Date.now() + 2000);
         return this.json({ ok: true, playing: r.now && r.now.id, wanted: r.target, strays: r.strays, state: await this.view() });
       }
+      if (b.action === "prev") {
+        // You asked for the previous song: do it here, and remember it was asked for,
+        // so the brain doesn't mistake the old song for Spotify falling back and skip forward again.
+        await this.sp("/me/player/previous", { method: "POST" });
+        const now = p ? await this.waitChange(p.id, 3000) : null;   // no change = Spotify just restarted the song
+        if (now) await this.onNewTrack(now, true);
+        await this.st.put("cmdAt", Date.now()); await this.st.put("cmdTarget", now ? now.id : (p && p.id));
+        await this.st.setAlarm(Date.now() + 2000);
+        return this.json({ ok: true, playing: now ? now.id : p && p.id, state: await this.view() });
+      }
       if (b.action === "play" && b.id) {
         const handed = await this.get("handed", null);
         if (!p || !p.playing || (p.device && p.device.type === "Smartphone" && handed)) {

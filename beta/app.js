@@ -676,7 +676,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.47";
+  const APP_VERSION = "2.48";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1189,7 +1189,10 @@
     try { await Spotify.seek(pos); setTimeout(pollNow, 900); } catch (e) { playError(e); }
   });
   $("pvPP").onclick = () => $("npPP").click();
-  $("pvPrev").onclick = async () => { try { await Spotify.previous(); setTimeout(pollNow, 700); } catch (e) { playError(e); } };
+  $("pvPrev").onclick = async () => {
+    if (brainMode()) return brainCmd({ action: "prev" });   // the brain must know you asked for the old song
+    try { await Spotify.previous(); setTimeout(pollNow, 700); } catch (e) { playError(e); }
+  };
   // Next: if Spotify has nothing lined up, skipping would just stop the music, so play something instead.
   // Next: one tap = one track, taps are handled one after another (fast tapping is queued up, not lost or
   // tangled), and the app waits to see the new track before the next tap is acted on.

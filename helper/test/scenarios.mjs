@@ -89,4 +89,10 @@ ok("…and the next press lands on our track", S.cur === want16 && S.played.leng
 const pick17 = lib[1300][0];
 await call("/cmd", { key, action: "next", next: { id: pick17, for: S.cur } });
 ok("Next tap uses the app's #1 sent with it", S.cur === pick17);
+// 18) Previous through the brain: the old song plays and is NOT skipped as a "fallback"
+await runFor(5000); const was18 = S.played[S.played.length - 2];
+await call("/cmd", { key, action: "prev" }); await runFor(30000);
+ok("Previous plays the previous song and the brain leaves it alone", S.cur === was18, "now " + S.cur.slice(0, 5) + " expected " + was18.slice(0, 5));
+await call("/cmd", { key, action: "next" });
+ok("…and Next afterwards moves on normally", S.cur !== was18);
 console.log("total Spotify calls:", S.calls.length, "| played:", S.played.length);

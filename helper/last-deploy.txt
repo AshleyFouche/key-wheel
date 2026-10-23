@@ -1,4 +1,4 @@
-Deploy run: Fri Oct 23 01:34:52 UTC 2026
+Deploy run: Fri Oct 23 02:17:59 UTC 2026
 Result: success
 subdomain lookup: {
   "result": {
@@ -13,16 +13,16 @@ health try 1: {"ok":true,"service":"ashflow-helper","connected":true}
 
  ⛅️ wrangler 4.86.0
 ───────────────────
-Total Upload: 17.04 KiB / gzip: 5.33 KiB
+Total Upload: 17.60 KiB / gzip: 5.47 KiB
 Your Worker has access to the following bindings:
 Binding                                                         Resource                  
 env.BRAIN (Brain)                                               Durable Object            
 env.SPOTIFY_CLIENT_ID ("2d4d55ba2ed349af99c52a75decf7db0")      Environment Variable      
 env.ALLOWED_ORIGIN ("https://ashleyfouche.github.io")           Environment Variable      
 
-Uploaded ashflow-helper (1.48 sec)
-Deployed ashflow-helper triggers (0.37 sec)
+Uploaded ashflow-helper (2.61 sec)
+Deployed ashflow-helper triggers (0.50 sec)
   https://ashflow-helper.ashflow-650cb2.workers.dev
-Current Version ID: ff2449af-5467-4f1e-b099-ca2dd952cdf5
+Current Version ID: dda48c03-b26e-4f7c-b824-7d7e676d8381
 
 Cloudflare collects anonymous telemetry about your usage of Wrangler. Learn more at https://github.com/cloudflare/workers-sdk/tree/main/packages/wrangler/telemetry.md

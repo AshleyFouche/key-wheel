@@ -620,3 +620,5 @@ body.fz-open{overflow:hidden}
 .nextbox .note{margin:0;font-size:12px}
 .row.isnext{outline:1px solid color-mix(in srgb,var(--accent) 45%,transparent);border-radius:10px}
 .nby{color:var(--muted);font-weight:400}
+
+.backnp{display:block;text-align:left;margin:0 0 6px;font-size:13px}

@@ -154,6 +154,7 @@
   // ---------- anchor + trail ----------
   function paintAnchor() {
     const a = $("anchor");
+    const backTo = (typeof follow !== "undefined" && follow && followPaused && np && byId.get(np.id) && byId.get(np.id).key && (!state.anchor || state.anchor.id !== np.id)) ? byId.get(np.id) : null;
     if (state.anchor) {
       const t = state.anchor;
       a.innerHTML = `<div class="ahead"><span class="eyebrow">Mixing out of</span><button class="link" type="button" id="all">All tracks</button></div><div class="a-main"><span class="art a-art" data-aid="${esc(t.id)}"></span><div class="a-txt"><span class="t">${esc(t.title)}</span>
@@ -198,8 +199,17 @@
         go("crate"); window.scrollTo(0, 0); toast(`Crate set to your ${crate.length}-track thread`);
       };
     }
+    paintBackLink(backTo);
   }
 
+  // Paint the "Back to what's playing" link (called at the end of paintAnchor).
+  function paintBackLink(backTo) {
+    const a = $("anchor"); if (!a || !backTo) return;
+    const b = document.createElement("button"); b.type = "button"; b.className = "link backnp";
+    b.innerHTML = `↺ Back to what's playing: <b>${esc(backTo.title)}</b>`;
+    b.onclick = () => { followPaused = false; setAnchor(backTo, false, true); window.scrollTo({ top: 0, behavior: "smooth" }); };
+    a.prepend(b);
+  }
   // ---------- list ----------
   const q = $("q"), tmin = $("tmin"), tmax = $("tmax"), sel = $("crate");
   function crateOptions() {
@@ -423,6 +433,8 @@
 
   function setAnchor(t, fromTrail, quiet) {
     if (!t.key) { toast("No key for this track yet"); return; }
+    // Picking something other than what's playing pauses following, so a song change doesn't pull you away.
+    if (!quiet && typeof follow !== "undefined" && follow) followPaused = !(np && np.id === t.id);
     if (!fromTrail && state.trail[state.trail.length - 1] !== t) state.trail.push(t);
     state.anchor = t; state.key = t.key; q.value = "";
     if (t.tempo) { const [lo, hi] = tempoWindow(t); tmin.value = lo; tmax.value = hi; }
@@ -430,8 +442,8 @@
     if (quiet) { render(); return; }
     go("wheel"); render(); window.scrollTo({ top: 0, behavior: "smooth" });
   }
-  function pick(k) { state.key = k; state.anchor = null; state.trail = []; state.shown = 60; saveState(); render(); }
-  function showAll() { state.trail = []; state.key = null; state.anchor = null; tmin.value = ""; tmax.value = ""; sel.value = ""; state.shown = 60; saveState(); render(); }
+  function pick(k) { if (typeof follow !== "undefined" && follow) followPaused = true; state.key = k; state.anchor = null; state.trail = []; state.shown = 60; saveState(); render(); }
+  function showAll() { if (typeof follow !== "undefined" && follow) followPaused = true; state.trail = []; state.key = null; state.anchor = null; tmin.value = ""; tmax.value = ""; sel.value = ""; state.shown = 60; saveState(); render(); }
   function render() { paintWheel(); paintDir(); paintMoves(); paintAnchor(); paintGenreChips(); paintList(); }
 
   // ---------- set direction ----------
@@ -664,7 +676,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.45";
+  const APP_VERSION = "2.46";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -967,7 +979,14 @@
   $("moreShots").onchange = e => readShots(e.target, $("paste"), $("pasteStatus"));
 
   // ---------- playback + now playing ----------
-  let np = null, follow = ls.get("kwb.follow", false), npTimer = null, lastNpId = null;
+  // "Follow": the Wheel tab tracks what's playing. On by default; paused while you explore something else.
+  var np = null, follow = ls.get("kwb.follow", false), npTimer = null, lastNpId = null, followPaused = false;
+  if (!ls.get("kwb.mig246", false)) { follow = true; ls.set("kwb.follow", true); ls.set("kwb.mig246", true); }
+  function followNow(force) {
+    if (!follow || (followPaused && !force) || !np) return;
+    const rec = byId.get(np.id);
+    if (rec && rec.key && (!state.anchor || state.anchor.id !== rec.id)) setAnchor(rec, false, true);
+  }
   const npBar = $("np");
   // "Play now". Spotify's direct play command (replace everything with this track) has been knocking
   // the iPhone off Spotify while it plays in the background, but queue-then-skip works reliably.
@@ -1072,7 +1091,7 @@
   }
   $("npQueue").onclick = () => { go("playing"); window.scrollTo(0, document.body.scrollHeight); };
   $("npFollow").onclick = () => {
-    follow = !follow; ls.set("kwb.follow", follow); paintModes();
+    follow = !follow; ls.set("kwb.follow", follow); followPaused = false; paintModes();
     toast(follow ? "Following what Spotify plays" : "Stopped following");
     if (follow && np) { const rec = byId.get(np.id); if (rec && rec.key && (!state.anchor || state.anchor.id !== rec.id)) setAnchor(rec, false, true); }
   };
@@ -1099,7 +1118,7 @@
         if (typeof helperOn === "function" && helperOn()) setTimeout(() => helperSync(), 1500);   // fresh plan for the helper at every track change
         liveTrack(); checkHanded(); headsKey = "";
         if (!$("view-playing").hidden) paintSuggest();
-        if (follow) { const rec = byId.get(np.id); if (rec && rec.key && (!state.anchor || state.anchor.id !== rec.id)) setAnchor(rec, false, true); }
+        followNow(); if (follow && followPaused) paintAnchor();   // keep the "Back to what's playing" link current
       }
       // Spotify's repeat (song or "context") makes it go back to the same track once a queued one ends,
       // which fights the app's queue. Turn it off when there's something lined up.
@@ -2621,6 +2640,7 @@
     if (v === "search") paintSearch();
     if (v === "history") { paintHistory(); syncRecent(); }
     if (v === "playlists" && !skipPaint) paintPlaylists(true);
+    if (v === "wheel" && typeof followNow === "function") followNow();
     if (v === "more") { paintMore(); paintHelper(); if (helperOn()) helperSync(); }
     if (v === "draft") paintDraft();
     if (v !== "browse" && v !== "info" && v !== "match") { try { sessionStorage.setItem("kwb.view", v); } catch (e) {} }

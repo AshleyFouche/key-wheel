@@ -25,6 +25,7 @@ globalThis.fetch = async (url, opts = {}) => {
   advanceNatural();
   S.calls.push(m + " " + url.replace("https://api.spotify.com/v1", ""));
   if (url.endsWith("/me/player") && m === "GET") return S.cur ? res(200, { is_playing: S.playing, progress_ms: now - S.startedAt, device: S.device, item: { type: "track", id: S.cur, name: "T" + S.cur.slice(0, 4), duration_ms: DUR[S.cur] || 200000, artists: [{ name: "A" }] } }) : res(204);
+  if (url.endsWith("/me/player/queue") && m === "GET") { const ctxNext = []; for (let k = 0; k < 10 && S.context.length; k++) ctxNext.push(S.context[(S.ctxPos + k) % S.context.length]); return res(200, { queue: S.queue.concat(ctxNext).map(id => ({ type: "track", id })) }); }
   if (url.includes("/me/player/queue") && m === "POST") { S.queue.push(decodeURIComponent(url.split("uri=")[1]).split(":")[2]); return res(204); }
   if (url.includes("/me/player/next")) { const nxt = S.queue.length ? S.queue.shift() : S.context[S.ctxPos++ % S.context.length]; startTrack(nxt); return res(204); }
   if (url.includes("/me/player/play") && m === "PUT") { const b = JSON.parse(opts.body || "{}"); if (b.uris) { S.context = [b.uris[0].split(":")[2]]; S.ctxPos = 0; startTrack(S.context[0]); S.ctxPos = 1; } S.playing = true; return res(204); }

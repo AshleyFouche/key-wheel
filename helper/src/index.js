@@ -138,6 +138,8 @@ export class Brain {
     if (!p || !p.item || p.item.type !== "track") return null;
     return { id: p.item.id, title: p.item.name, artist: (p.item.artists || []).map(x => x.name).join(", "), dur: p.item.duration_ms, prog: p.progress_ms || 0, playing: !!p.is_playing, device: p.device || {}, at: Date.now() };
   }
+  // Spotify's up-next list: tracks queued by apps first, then the playlist it's playing from.
+  async upNext() { const j = await this.sp("/me/player/queue"); return ((j && j.queue) || []).filter(t => t && t.id).map(t => t.id); }
   async waitChange(fromId, ms = 5000) {
     const end = Date.now() + ms;
     while (Date.now() < end) { await sleep(350); const p = await this.player().catch(() => null); if (p && p.id !== fromId) return p; }
@@ -162,7 +164,7 @@ export class Brain {
   // ----- HTTP -----
   async fetch(req) {
     const url = new URL(req.url), body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
-    if (url.pathname === "/" || url.pathname === "/health") return this.json({ ok: true, service: "ashflow-helper", engine: 2, connected: !!(await this.get("auth", null)) });
+    if (url.pathname === "/" || url.pathname === "/health") return this.json({ ok: true, service: "ashflow-helper", engine: 3, connected: !!(await this.get("auth", null)) });
     if (url.pathname === "/connect" && req.method === "POST") return this.connect(body);
     const key = await this.get("key", null);
     if (!key || body.key !== key) return this.json({ error: "not connected" }, 401);
@@ -193,6 +195,7 @@ export class Brain {
   // The app shares its plan; the brain answers with what it's doing.
   async sync(b) {
     const now = Date.now();
+    if ((await this.get("engine", 1)) < 3) { for (const k of ["handed", "handedFor", "queuedFor", "ping", "verified", "lastSeen"]) await this.st.delete(k); await this.st.put("engine", 3); await this.log("Engine 3: cleared old state"); }
     if (b.library && b.libHash) await this.putLibrary(b.library, b.libHash);
     if (b.settings) await this.st.put("settings", b.settings);
     if (b.started) await this.st.put("started", b.started);
@@ -268,6 +271,12 @@ export class Brain {
     await this.act({ type: "play", id: p.id, title: p.title, artist: p.artist, at: Date.now() - p.prog });
     if (handed === p.id) { await this.st.put("handed", null); await this.st.put("handedFor", null); }
     else if (handed) await this.st.put("handedFor", p.id);                      // still waiting in Spotify: it's this track's Next now
+    const strays = await this.get("strays", []);
+    if (!commanded && strays.includes(p.id)) {
+      await this.st.put("strays", strays.filter(x => x !== p.id));
+      const h2 = await this.get("handed", null);
+      if (h2) { await this.log("Skipping a stray Spotify had queued: " + p.title); await this.goNext(p, "stray"); return; }
+    }
     // Spotify fell back to something already played this flow (its own playlist) → go to Next.
     if (!commanded && wasHeard && prev && prev.id !== p.id) {
       await this.log("Spotify went back to " + p.title + " — skipping to Next");
@@ -275,22 +284,47 @@ export class Brain {
     }
   }
 
-  // Skip to Next, making sure Next is what actually plays. Strays (anything else Spotify had waiting) are skipped and dropped.
+  // Skip to Next, making sure Next is what actually plays.
+  // 1) Check Spotify really still has our locked-in track; if not, forget it and choose again.
+  // 2) Find where our track sits in Spotify's up-next list. Right at the front: one skip.
+  //    A few strays in front (tracks something else queued): skip exactly those. Deeper or missing: start it directly.
   async goNext(p, why) {
-    let handed = await this.get("handed", null), target = handed;
-    if (!target) {
-      const d = await this.decideNext(p.id);
-      if (d) { await this.sp("/me/player/queue?uri=" + encodeURIComponent("spotify:track:" + d.id), { method: "POST" }); target = d.id; await this.st.put("handed", d.id); await this.st.put("handedFor", p.id); await this.act({ type: "queue", id: d.id, after: p.id, why: d.why }); await sleep(250); }
+    let up = await this.upNext().catch(() => null), handed = await this.get("handed", null), target = null, d = null;
+    if (handed && up && up.includes(handed)) target = handed;
+    else {
+      if (handed) { await this.log("Locked-in track wasn't in Spotify's queue any more — choosing again"); await this.st.put("handed", null); await this.st.put("handedFor", null); }
+      d = await this.decideNext(p.id);
+      if (d) {
+        target = d.id;
+        if (!up || !up.includes(d.id)) { await this.sp("/me/player/queue?uri=" + encodeURIComponent("spotify:track:" + d.id), { method: "POST" }); await sleep(300); up = await this.upNext().catch(() => null); }
+        await this.st.put("handed", d.id); await this.st.put("handedFor", p.id); await this.act({ type: "queue", id: d.id, after: p.id, why: d.why });
+      }
     }
-    await this.sp("/me/player/next", { method: "POST" });
-    let now = await this.waitChange(p.id), strays = 0;
-    if (target && now && now.id !== target) {
-      for (let k = 0; k < 4 && now && now.id !== target; k++) { strays++; const was = now.id; await this.sp("/me/player/next", { method: "POST" }); now = await this.waitChange(was); }
+    let now = null, strays = 0, direct = false;
+    const idx = target && up ? up.indexOf(target) : -1;
+    if (idx > 0) await this.addStrays(up.slice(0, idx));
+    if (!target) { await this.sp("/me/player/next", { method: "POST" }); now = await this.waitChange(p.id); }
+    else if (idx === 0 || (idx < 0 && p.device && p.device.type === "Smartphone")) {
+      await this.sp("/me/player/next", { method: "POST" }); now = await this.waitChange(p.id);
+    } else if (idx > 0 && idx <= 3) {
+      let from = p.id;
+      for (let k = 0; k <= idx; k++) { await this.sp("/me/player/next", { method: "POST" }); now = await this.waitChange(from); if (!now) break; from = now.id; if (now.id === target) break; strays++; }
+    } else {
+      // Too many strays (or Spotify isn't listing it): start our track directly instead of skipping through them.
+      direct = true;
+      await this.sp("/me/player/play", { method: "PUT", body: JSON.stringify({ uris: ["spotify:track:" + target] }) });
+      now = await this.waitChange(p.id);
     }
     if (now) await this.onNewTrack(now, true);
+    if (direct && now && now.id === target) { await this.st.put("handed", null); await this.st.put("handedFor", null); }
     await this.st.put("cmdAt", Date.now()); await this.st.put("cmdTarget", now ? now.id : target);
-    return { now, target, strays, why };
+    if (target && now && now.id !== target) await this.log(`Wanted ${target} but Spotify played ${now.id}`);
+    return { now, target, strays, why, direct };
   }
+
+  // Strays: tracks sitting in Spotify's queue in front of ours that nobody chose now (left by older versions,
+  // or queued in the Spotify app). When one starts by itself, the brain skips it straight to Next.
+  async addStrays(ids) { const cur = new Set(await this.get("strays", [])); ids.forEach(x => cur.add(x)); await this.st.put("strays", [...cur].slice(-50)); }
 
   async cmd(b) {
     try {
@@ -346,12 +380,22 @@ export class Brain {
       if (!p.playing) { await this.note("Paused"); return next(30000); }
       const left = p.dur - p.prog;
       const handedFor = await this.get("handedFor", null), handed = await this.get("handed", null);
-      if (handed && handedFor === (await this.get("cur", {})).id) { await this.note("Next is lined up"); return next(left > 25000 ? Math.min(20000, left - 20000) : left + 2500); }
+      if (handed && handedFor === (await this.get("cur", {})).id) {
+        if (left <= HAND_MS + 5000 && !(await this.get("verified", null) === handed)) {
+          const up = await this.upNext().catch(() => null);
+          if (up && !up.includes(handed)) { await this.log("Locked-in track missing from Spotify's queue — handing over again"); await this.st.put("handed", null); await this.st.put("handedFor", null); return next(500); }
+          await this.st.put("verified", handed);
+        }
+        await this.note("Next is lined up"); return next(left > 25000 ? Math.min(20000, left - 20000) : left + 2500);
+      }
       if (left <= HAND_MS + 3000) {
         const d = await this.decideNext(p.id);
         if (!d) { await this.note("Nothing suitable to line up"); return next(left + 2500); }
-        try { await this.sp("/me/player/queue?uri=" + encodeURIComponent("spotify:track:" + d.id), { method: "POST" }); }
+        let up0 = await this.upNext().catch(() => null);
+        try { if (!up0 || !up0.includes(d.id)) await this.sp("/me/player/queue?uri=" + encodeURIComponent("spotify:track:" + d.id), { method: "POST" }); }
         catch (e) { await this.note("Couldn't line up the next track: " + e.message); return next(3000); }
+        const up1 = await this.upNext().catch(() => null), pos = up1 ? up1.indexOf(d.id) : -1;
+        if (pos > 0) await this.addStrays(up1.slice(0, pos));
         await this.st.put("handed", d.id); await this.st.put("handedFor", p.id);
         await this.act({ type: "queue", id: d.id, after: p.id, why: d.why });
         await this.note("Next is lined up");

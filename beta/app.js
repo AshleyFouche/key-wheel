@@ -664,7 +664,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.40";
+  const APP_VERSION = "2.41";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -2670,6 +2670,13 @@
     await loadLibrary();
     saveState();
     crateOptions(); saveCrate(); paintSpotifyBtn(); render();
+    // One-time clean-up for the new engine: drop duplicates and tracks already played from the queue,
+    // and forget any old "locked in" track (the brain re-checks what Spotify really has).
+    if (!ls.get("kwb.mig241", false)) {
+      const playedNow = playedThisFlow(true), seenQ = new Set();
+      appQ = appQ.filter(id => { if (seenQ.has(id) || playedNow.has(id)) return false; seenQ.add(id); return true; });
+      handed = null; ahead = []; saveQ(); ls.set("kwb.mig241", true);
+    }
     let v = "wheel"; try { v = sessionStorage.getItem("kwb.view") || "wheel"; } catch (e) {}
     go(v);
     paintModes();

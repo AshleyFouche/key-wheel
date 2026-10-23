@@ -44,4 +44,23 @@ ok("…and the already lined-up Next follows it", !handed || S.played.slice(-1)[
 S.device = { type: "Smartphone", name: "iPhone" }; mem.set("handed", null);
 await call("/cmd", { key, action: "play", id: lib[500][0] });
 ok("Play now on iPhone uses queue+skip and lands", S.cur === lib[500][0]);
+// 9) a stale lock-in (Spotify no longer has it) while playing from a big playlist
+S.device = { type: "Speaker", name: "LS50" }; S.context = lib.slice(800, 830).map(x => x[0]); S.ctxPos = 0; S.queue = [];
+mem.set("handed", lib[600][0]); mem.set("handedFor", S.cur);
+const want9 = (await brain.decideNext(S.cur)).id; const b9 = S.played.length;
+await call("/cmd", { key, action: "next" });
+ok("stale lock-in: Next lands on a fresh pick in ONE skip", S.cur === want9 && S.played.length - b9 === 1, (S.played.length - b9) + " track(s) started");
+// 10) four strays queued in front → no skipping through them, our track starts directly
+S.queue = lib.slice(700, 704).map(x => x[0]); mem.set("handed", null);
+const want10 = (await brain.decideNext(S.cur)).id; const b10 = S.played.length;
+await call("/cmd", { key, action: "next" });
+ok("4 strays in front: starts Next directly, no blips", S.cur === want10 && S.played.length - b10 === 1, (S.played.length - b10) + " track(s) started");
+// 11) Next storm while a playlist is the context
+const b11 = S.played.length; for (let i = 0; i < 4; i++) await call("/cmd", { key, action: "next" });
+ok("4 Next presses over a playlist = exactly 4 tracks", S.played.length - b11 === 4, (S.played.length - b11) + " started");
+// 12) natural end over a playlist plays our Next, not the playlist's next song
+await call("/sync", { key, libHash: "h", queue: [], queueAt: clock() + 1 }); await runFor(2000);
+const cur12 = S.cur, n12 = (await brain.decideNext(S.cur)).id;
+await runFor(Math.max(0, DUR[S.cur] - (clock() - S.startedAt)) + 3000);
+ok("over a playlist, the end of a song plays our Next", S.played.slice(S.played.indexOf(cur12) + 1, S.played.indexOf(cur12) + 3).includes(n12), "(a stray left over from step 10 may blip first) wanted " + n12.slice(0,5) + " handed " + String(mem.get("handed")).slice(0,5) + " played " + S.played.slice(-3).map(x=>x.slice(0,5)).join(",") + " diag " + JSON.stringify((mem.get("diag")||[]).slice(-3).map(d=>d.msg)));
 console.log("total Spotify calls:", S.calls.length, "| played:", S.played.length);

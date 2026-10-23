@@ -622,3 +622,8 @@ body.fz-open{overflow:hidden}
 .nby{color:var(--muted);font-weight:400}
 
 .backnp{display:block;text-align:left;margin:0 0 6px;font-size:13px}
+
+/* 2.49: swiping a track sideways must never make the page wider (iPhone then zooms the whole screen out) */
+html,body{overflow-x:hidden}
+.list,#pvSuggest,#pvQueue,#list,#crateList,#draftList{overflow-x:clip}
+@supports not (overflow:clip){.list,#pvSuggest,#pvQueue,#list,#crateList,#draftList{overflow-x:hidden}}

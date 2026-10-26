@@ -5,7 +5,7 @@ const [, c] = await call("/connect", { refresh: "R1" }); const key = c.key;
 await call("/sync", { key, libHash: "h", library: rows, settings: { autoPick: true, dir: "any" }, queue: [], history: [], started: [] });
 const OLD = lib[0][0]; S.context = [OLD]; startTrack(lib[0][0]);          // like PUT play: single-track context = an old song
 // 1) natural end, app open: app says #1 for track 0 is lib[1]
-await call("/sync", { key, libHash: "h", next: { id: lib[1][0], for: lib[0][0] }, queueAt: 0 });
+await call("/sync", { key, libHash: "h", next: { id: lib[1][0], for: lib[0][0] }, queueAt: 0, engage: true });
 await runFor(260000);
 ok("natural end plays the app's #1", S.played[1] === lib[1][0], S.played.slice(0, 3).map(x => x.slice(0, 5)).join(" → "));
 // 2) one hour unattended: no stops, no repeats, never the old fallback song
@@ -24,10 +24,17 @@ ok("…none old or repeated", !storm.includes(OLD) && new Set(S.played).size ===
 S.queue.push(lib[200][0]);
 const exp = await brain.decideNext(S.cur); await call("/cmd", { key, action: "next" });
 ok("Next steps past a stray", S.cur === exp.id, "stray " + lib[200][0].slice(0, 5));
-// 5) lock-screen skips (Spotify next, brain not told) twice in a row
+// 5) you take over in Spotify itself (skip there / pick a song there): the brain steps back and does NOTHING
 const sim = async () => { const nxt = S.queue.length ? S.queue.shift() : S.context[S.ctxPos++ % S.context.length]; startTrack(nxt); };
-await sim(); advance(2000); await sim(); await runFor(30000);
-ok("lock-screen double skip: fallback song is corrected", S.cur !== OLD, "now " + S.cur.slice(0, 5) + (S.played.slice(-3).includes(OLD) ? " (old song blipped, then skipped)" : ""));
+await sim(); await runFor(30000);
+const ss5 = (await call("/sync", { key, libHash: "h" }))[1].state;
+ok("Spotify-side change ends the session", ss5.session === false, ss5.sessionWhy);
+S.queue = []; const calls5 = S.calls.filter(c => !c.startsWith("GET")).length, b5 = S.played.length;
+await runFor(3600000);
+ok("…and for the next hour the brain sends Spotify nothing", S.calls.filter(c => !c.startsWith("GET")).length === calls5, (S.calls.filter(c => !c.startsWith("GET")).length - calls5) + " commands");
+// press Next in Ashflow → session back on
+await call("/cmd", { key, action: "next" });
+ok("pressing Next in Ashflow turns it back on", (await call("/sync", { key, libHash: "h" }))[1].state.session === true);
 // 6) your queue wins
 await call("/sync", { key, libHash: "h", queue: [lib[300][0], lib[301][0]], queueAt: clock() + 1 });
 await runFor(DUR[S.cur] + 5000); await runFor(DUR[S.cur] + 5000);
@@ -62,9 +69,9 @@ ok("4 Next presses over a playlist = exactly 4 tracks", S.played.length - b11 ==
 await call("/sync", { key, libHash: "h", queue: [], queueAt: clock() + 1 }); await runFor(2000);
 const cur12 = S.cur, n12 = (await brain.decideNext(S.cur)).id;
 await runFor(Math.max(0, DUR[S.cur] - (clock() - S.startedAt)) + 3000);
-ok("over a playlist, the end of a song plays our Next", S.played.slice(S.played.indexOf(cur12) + 1, S.played.indexOf(cur12) + 3).includes(n12), "(a stray left over from step 10 may blip first) wanted " + n12.slice(0,5) + " handed " + String(mem.get("handed")).slice(0,5) + " played " + S.played.slice(-3).map(x=>x.slice(0,5)).join(",") + " diag " + JSON.stringify((mem.get("diag")||[]).slice(-3).map(d=>d.msg)));
+ok("over a playlist, the end of a song plays our Next — or, if a leftover track jumps in first, the brain steps back", S.played.slice(S.played.indexOf(cur12) + 1, S.played.indexOf(cur12) + 3).includes(n12) || (await call("/sync", { key, libHash: "h" }))[1].state.session === false, "wanted " + n12.slice(0,5) + " handed " + String(mem.get("handed")).slice(0,5) + " played " + S.played.slice(-3).map(x=>x.slice(0,5)).join(",") + " diag " + JSON.stringify((mem.get("diag")||[]).slice(-3).map(d=>d.msg)));
 // 13) Spotify refuses to skip ("Restriction violated") → Next still lands, by starting it directly
-S.noSkip = true; const want13 = (await brain.decideNext(S.cur)).id; const [st13, r13] = await call("/cmd", { key, action: "next" }); S.noSkip = false;
+S.noSkip = true; const want13 = mem.get("handed") || (await brain.decideNext(S.cur)).id; const [st13, r13] = await call("/cmd", { key, action: "next" }); S.noSkip = false;
 ok("'Restriction violated' on skip: Next starts the track directly", st13 === 200 && S.cur === want13, st13 + " " + (r13.error || ""));
 // 14) LS50-style speaker: doesn't list its queue, and refuses the first skip after a queue add
 S.hideQueue = true; S.queue = []; mem.set("handed", null);

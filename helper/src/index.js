@@ -8,7 +8,8 @@
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const API = "https://api.spotify.com/v1";
 const HAND_MS = 15000;              // hand "Next" to Spotify this long before the end of the track
-const CMD_QUIET_MS = 8000;          // after a Next / Play command, don't second-guess what Spotify plays
+const CMD_QUIET_MS = 8000;
+const SESSION_IDLE_MS = 3 * 3600e3;   // no contact from the app for this long → the brain steps back          // after a Next / Play command, don't second-guess what Spotify plays
 const GAP = 60 * 60 * 1000;         // an hour's break starts a new flow
 const LIB_CHUNK = 700;              // tracks per stored chunk (storage values are capped)
 
@@ -179,7 +180,7 @@ export class Brain {
   // ----- HTTP -----
   async fetch(req) {
     const url = new URL(req.url), body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
-    if (url.pathname === "/" || url.pathname === "/health") return this.json({ ok: true, service: "ashflow-helper", engine: 4, connected: !!(await this.get("auth", null)) });
+    if (url.pathname === "/" || url.pathname === "/health") return this.json({ ok: true, service: "ashflow-helper", engine: 5, connected: !!(await this.get("auth", null)) });
     if (url.pathname === "/connect" && req.method === "POST") return this.connect(body);
     const key = await this.get("key", null);
     if (!key || body.key !== key) return this.json({ error: "not connected" }, 401);
@@ -210,6 +211,7 @@ export class Brain {
   // The app shares its plan; the brain answers with what it's doing.
   async sync(b) {
     const now = Date.now();
+    if ((await this.get("engine", 1)) < 5) { await this.st.put("session", { on: false, at: Date.now(), why: "engine 5: off until you use Ashflow" }); await this.st.put("engine", 5); }
     if ((await this.get("engine", 1)) < 4) { for (const k of ["handed", "handedFor", "queuedFor", "ping", "verified", "lastSeen", "plan", "appNext", "strays", "cur"]) await this.st.delete(k); await this.st.put("engine", 4); await this.log("Engine 4: cleared old state"); }
     if (b.library && b.libHash) await this.putLibrary(b.library, b.libHash);
     if (b.settings) await this.st.put("settings", b.settings);
@@ -224,6 +226,7 @@ export class Brain {
     if (Array.isArray(b.queue) && !brainNewer) await this.st.put("queue", b.queue);
     if (b.next !== undefined) await this.st.put("appNext", b.next);            // { id, for } — the app's #1 for the playing track
     if (b.plan) await this.st.put("plan", b.plan);
+    if (b.engage) await this.startSession("you changed your queue in Ashflow");
     await this.st.put("seen", now);
     const al = await this.st.getAlarm(); if (!al || al - now > 20000) await this.st.setAlarm(now + 1000);
     const acts = (await this.get("acts", [])).filter(a => a.at > (b.since || 0));
@@ -233,7 +236,8 @@ export class Brain {
 
   async view() {
     const a = await this.get("auth", null);
-    return { engine: 4, connected: !!a, dead: !!(a && a.dead), cur: await this.get("cur", null), handed: await this.get("handed", null),
+    const ss = await this.get("session", null);
+    return { engine: 5, session: !!(ss && ss.on), sessionWhy: ss ? ss.why : "", connected: !!a, dead: !!(a && a.dead), cur: await this.get("cur", null), handed: await this.get("handed", null),
       handedFor: await this.get("handedFor", null), lastCheck: await this.get("lastCheck", 0), note: await this.get("note", ""), lastAct: await this.get("lastAct", null) };
   }
   async note(s) { await this.st.put("note", s); }
@@ -277,6 +281,18 @@ export class Brain {
   }
 
   // A new track started: bookkeeping, and keep a pending hand-over as the new Next (it's still in Spotify's queue).
+  // A session = you're using Ashflow. It starts when you press Next / Play / Previous or change your queue in the app,
+  // and ends the moment Spotify plays something Ashflow didn't choose (you took over in Spotify), or after 3 quiet hours.
+  // Outside a session the brain does NOTHING to Spotify — it only watches.
+  async inSession() {
+    const ss = await this.get("session", null);
+    if (!ss || !ss.on) return false;
+    if (Date.now() - Math.max(ss.at || 0, await this.get("seen", 0)) > SESSION_IDLE_MS) { await this.endSession("no contact from the app for 3 hours"); return false; }
+    return true;
+  }
+  async startSession(why) { const ss = await this.get("session", null); if (!ss || !ss.on) await this.log("Session on — " + why); await this.st.put("session", { on: true, at: Date.now(), why }); }
+  async endSession(why) { const ss = await this.get("session", null); if (ss && ss.on) await this.log("Stepped back — " + why); await this.st.put("session", { on: false, at: Date.now(), why }); }
+
   async onNewTrack(p, commanded) {
     const prev = await this.get("cur", null), handed = await this.get("handed", null);
     await this.st.put("cur", { id: p.id, title: p.title, artist: p.artist, dur: p.dur, startedAt: Date.now() - p.prog });
@@ -286,16 +302,10 @@ export class Brain {
     await this.act({ type: "play", id: p.id, title: p.title, artist: p.artist, at: Date.now() - p.prog });
     if (handed === p.id) { await this.st.put("handed", null); await this.st.put("handedFor", null); }
     else if (handed) await this.st.put("handedFor", p.id);                      // still waiting in Spotify: it's this track's Next now
-    const strays = await this.get("strays", []);
-    if (!commanded && strays.includes(p.id)) {
-      await this.st.put("strays", strays.filter(x => x !== p.id));
-      const h2 = await this.get("handed", null);
-      if (h2) { await this.log("Skipping a stray Spotify had queued: " + p.title); await this.goNext(p, "stray"); return; }
-    }
-    // Spotify fell back to something already played this flow (its own playlist) → go to Next.
-    if (!commanded && wasHeard && prev && prev.id !== p.id) {
-      await this.log("Spotify went back to " + p.title + " — skipping to Next");
-      await this.goNext(p, "fallback");
+    // Something started that Ashflow didn't choose (not our Next, not a command): you're driving from Spotify now.
+    // Step back — never skip it, never "correct" it.
+    if (!commanded && handed !== p.id && prev && prev.id !== p.id && (await this.inSession())) {
+      await this.endSession("Spotify played " + p.title + ", which Ashflow didn't choose");
     }
   }
 
@@ -382,6 +392,7 @@ export class Brain {
   async cmd(b) {
     try {
       const p = await this.player();
+      await this.startSession("you pressed " + b.action + " in Ashflow");
       if (b.next && b.next.id && b.next.for) await this.st.put("appNext", b.next);
       if (b.action === "next") {
         if (!p) { await this.sp("/me/player/next", { method: "POST" }).catch(() => {}); return this.json({ ok: true, state: await this.view() }); }
@@ -441,6 +452,7 @@ export class Brain {
       const cur = await this.get("cur", null);
       // Only the track a command just asked for counts as "commanded"; anything else that starts is Spotify's own doing.
       if (!cur || cur.id !== p.id) await this.onNewTrack(p, Date.now() - (await this.get("cmdAt", 0)) < CMD_QUIET_MS && p.id === (await this.get("cmdTarget", null)));
+      if (!(await this.inSession())) { await this.note("Standing back — Spotify is in charge until you use Ashflow"); return next(60000); }
       if (!p.playing) { await this.note("Paused"); return next(30000); }
       const left = p.dur - p.prog;
       const handedFor = await this.get("handedFor", null), handed = await this.get("handed", null);

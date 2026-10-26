@@ -676,7 +676,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.49";
+  const APP_VERSION = "2.50";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -783,7 +783,7 @@
     { const hp = Object.entries(typeof helperPicks !== "undefined" ? helperPicks : {}).sort((a, b) => a[1].at - b[1].at).slice(-5);
       if (hp.length) { lines.push("HELPER PICKS (newest last):"); hp.forEach(([id, v]) => lines.push(`  ${time(v.at)}  ${recOf(id, qMeta.get(id)).title} — ${v.why === "your plan" ? "your top suggestion (plan)" : v.why || "?"}`)); } }
     if (helperOn()) { try { const r = await fetch(HELPER + "/status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: helperKey }) }); const j = await r.json(); if (j.diag && j.diag.length) { lines.push("BRAIN LOG (newest last):"); j.diag.slice(-8).forEach(d => lines.push(`  ${time(d.at)}  ${d.msg}`)); } } catch (e) { lines.push("BRAIN LOG: couldn't fetch"); } }
-    lines.push(`HELPER (brain${helperStat && helperStat.engine ? " engine " + helperStat.engine : ""}): ${!HELPER ? "not set up" : !helperOn() ? "not connected — the app controls Spotify itself" : helperStat ? (helperStat.error || ("in charge" + (helperStat.note ? " · " + helperStat.note : "") + (helperStat.lastCheck ? " · last check " + time(helperStat.lastCheck) : "") + (helperStat.handed ? " · locked in: " + recOf(helperStat.handed, qMeta.get(helperStat.handed)).title : ""))) : "connected, no reply yet"}`);
+    lines.push(`HELPER (brain${helperStat && helperStat.engine ? " engine " + helperStat.engine : ""}): ${!HELPER ? "not set up" : !helperOn() ? "not connected — the app controls Spotify itself" : helperStat ? (helperStat.error || ((helperStat.session ? "ON for this session" : "STANDING BACK (" + (helperStat.sessionWhy || "not in use") + ")") + (helperStat.note ? " · " + helperStat.note : "") + (helperStat.lastCheck ? " · last check " + time(helperStat.lastCheck) : "") + (helperStat.handed ? " · locked in: " + recOf(helperStat.handed, qMeta.get(helperStat.handed)).title : ""))) : "connected, no reply yet"}`);
     if (brainMode() && np) { const cn = computeNext(); lines.push(`NEXT: ${cn ? recOf(cn.id, qMeta.get(cn.id)).title + " (" + NEXT_LABEL[cn.by] + ")" : "nothing — queue empty and Auto-pick off"}`); }
     if (!brainMode()) lines.push(`AUTO-PICK: ${autoPick ? "on" : "off"} · ${autoLog ? time(autoLog.at) + " (" + autoLog.why + ", playing " + autoLog.playing + "): " + autoLog.msg : "hasn't run yet"}`);
     { const ref = mixRef(); lines.push(`FOLLOWING: ${ref.rec ? ref.rec.title + " " + (ref.rec.key || "?") + (ref.fallback ? " (last keyed track — the playing one isn't in your library)" : "") : "nothing — the playing track isn't in your keyed library and none was in the last 3 hours"}`); }
@@ -1352,7 +1352,9 @@
   const AHEAD_N = 5;
   let qSyncT = 0;
   function saveQ() { if (typeof helperOn === "function" && helperOn()) { clearTimeout(qSyncT); qSyncT = setTimeout(() => helperSync(), 600); } qAt = Date.now(); ls.set("kwb.qAt", qAt); ls.set("kwb.appq", appQ); ls.set("kwb.handed", handed); ls.set("kwb.ahead", ahead); paintModes(); paintQueue(); if (typeof paintSuggest === "function") paintSuggest(); }
+  var engagedAt = 0;   // last time you changed your queue in Ashflow (tells the helper you're using Ashflow)
   function enqueue(t) {
+    engagedAt = Date.now();
     if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return; }
     if (!Spotify.canPlay()) { showReconnect(); return; }
     if (isLive()) { appQ.push(t.id); paintQueue(); liveDo(() => liveAppend([t.id])); toast(`Queued: ${t.title} (${appQ.length} in queue)`); return; }
@@ -1452,6 +1454,7 @@
   }
   // Queue several tracks (end of the list) — Live set or Spotify's queue, whichever is in use.
   function enqueueIds(ids, label) {
+    engagedAt = Date.now();
     if (!Spotify.connected()) { toast("Connect Spotify first (top right)"); return; }
     if (!Spotify.canPlay()) { showReconnect(); return; }
     if (!ids.length) return;
@@ -1461,6 +1464,7 @@
   }
   // Put a track straight after the playing one, without skipping to it.
   function playNextUp(id, title) {
+    engagedAt = Date.now();
     if (isLive()) liveDo(() => liveInsertNext(id));
     else { appQ.unshift(id); saveQ(); pump(); }
     toast("Up next: " + title);
@@ -1507,7 +1511,7 @@
       const del = document.createElement("button"); del.type = "button"; del.className = "del"; del.textContent = "✕"; del.setAttribute("aria-label", "Remove from queue");
       if (locked) { del.disabled = true; del.style.visibility = "hidden"; }
       r.querySelector(".play").replaceWith(del);
-      del.onclick = () => { const qi = parseInt(r.dataset.qi); if (isLive()) { liveDo(() => liveRemoveAt(qi)); toast("Removed from queue"); return; } appQ.splice(qi, 1); saveQ(); toast("Removed from queue"); };
+      del.onclick = () => { const qi = parseInt(r.dataset.qi); if (isLive()) { liveDo(() => liveRemoveAt(qi)); toast("Removed from queue"); return; } engagedAt = Date.now(); appQ.splice(qi, 1); saveQ(); toast("Removed from queue"); };
       const lab = document.createElement("div"); lab.className = "rel";
       const rel = prev && prev.key ? relations(prev.key) : null, m = rel && rec.key ? rel[rec.key] : null;
       lab.textContent = !rec.key ? "No key yet" : !prev || !prev.key ? "" : m ? MOVE_NAME[m] : "Key clash";
@@ -1520,13 +1524,13 @@
       prev = rec;
     });
   }
-  makeSortable($("pvQueue"), ids => { if (isLive()) { const nt = ids.slice(); liveDo(() => liveReorder(nt)); return; } appQ = ids; saveQ(); });
+  makeSortable($("pvQueue"), ids => { if (isLive()) { const nt = ids.slice(); liveDo(() => liveReorder(nt)); return; } engagedAt = Date.now(); appQ = ids; saveQ(); });
   $("qClear").onclick = () => {
     const b = $("qClear");
     if (!b.dataset.confirm) { b.dataset.confirm = "1"; b.textContent = "Tap again to clear"; setTimeout(() => { delete b.dataset.confirm; b.textContent = "Clear queue"; }, 3000); return; }
     delete b.dataset.confirm; b.textContent = "Clear queue";
     if (isLive()) { const n = appQ.length; liveDo(async () => { for (let i = n - 1; i >= 0; i--) await liveRemoveAt(i); }); toast("Queue cleared"); return; }
-    appQ = []; saveQ(); toast("Queue cleared");
+    appQ = []; engagedAt = 0; saveQ(); toast("Queue cleared");
   };
   function loadUpNext() { paintQueue(); }
 
@@ -2172,7 +2176,7 @@
   // a chain of suggestions, each following the one before. They play in order while the app is asleep.
   let lining = false;
   async function lineUpOnLeave() {
-    if (brainMode()) return;
+    return;   // retired: nothing is ever queued just because you left the app
     // With the helper connected it takes over — but if the track ends within a minute, hand over the next one
     // now, in case the phone locks before the helper notices (it takes up to ~40 s).
     if (typeof helperOn === "function" && helperOn()) {
@@ -2544,6 +2548,7 @@
       const body = { key: helperKey, libHash, settings: helperSettings(), queue: appQ, queueAt: qAt, since: helperSince,
         history: ls.get("kwb.history", []).slice(-200),
         next: np && cn && cn.by !== "locked" ? { id: cn.id, for: np.id } : null,
+        engage: Date.now() - engagedAt < 30000,
         plan: autoPick ? helperPlan() : [], started: Object.keys(started).filter(k => Date.now() - started[k] < 3 * 3600e3) };
       if (opts.withLib) body.library = rows;
       const r = await fetch(HELPER + "/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: !!opts.leaving && !opts.withLib });
@@ -2621,7 +2626,7 @@
     if (helperStat.error) { st.textContent = helperStat.error; return; }
     if (helperStat.dead) { st.textContent = "The helper's Spotify sign-in has expired — tap Reconnect helper."; return; }
     const la = helperStat.lastAct;
-    st.textContent = "In charge of what plays next — " + (helperStat.note || "running") + "." +
+    st.textContent = (helperStat.session ? "On for this session — " + (helperStat.note || "running") + "." : "Standing back — it only steps in after you press Next / Play or queue something in Ashflow, and steps back as soon as you play something in Spotify itself.") +
       (la ? ` Last ${la.type === "queue" ? "handed Spotify a track" : "saw a track start"} at ${timeFmt.format(la.at)}.` : "");
   }
   $("hConnect").onclick = () => { if (!Spotify.configured()) return; toast("Signing the helper in to Spotify…"); Spotify.login(true).catch(e => toast(e.message)); };

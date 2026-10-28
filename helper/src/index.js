@@ -395,6 +395,13 @@ export class Brain {
 
   async cmd(b) {
     try {
+      if (b.action === "expect") {
+        // The app is about to start a track itself (you pressed Play). Don't mistake it for Spotify taking over.
+        await this.startSession("you pressed play in Ashflow");
+        await this.st.put("expect", { id: b.id, until: Date.now() + 30000 });
+        if (b.next && b.next.id && b.next.for) await this.st.put("appNext", b.next);
+        return this.json({ ok: true, state: await this.view() });
+      }
       const p = await this.player();
       await this.startSession("you pressed " + b.action + " in Ashflow");
       if (b.next && b.next.id && b.next.for) await this.st.put("appNext", b.next);
@@ -462,7 +469,11 @@ export class Brain {
       if (!p) { await this.note("Nothing playing"); const idle = Date.now() - (await this.get("seen", 0)); return next(idle > 30 * 60000 ? 5 * 60000 : 30000); }
       const cur = await this.get("cur", null);
       // Only the track a command just asked for counts as "commanded"; anything else that starts is Spotify's own doing.
-      if (!cur || cur.id !== p.id) await this.onNewTrack(p, Date.now() - (await this.get("cmdAt", 0)) < CMD_QUIET_MS && p.id === (await this.get("cmdTarget", null)));
+      if (!cur || cur.id !== p.id) {
+        const ex = await this.get("expect", null), expecting = !!(ex && Date.now() < ex.until);   // the app is starting a track itself
+        await this.onNewTrack(p, expecting || (Date.now() - (await this.get("cmdAt", 0)) < CMD_QUIET_MS && p.id === (await this.get("cmdTarget", null))));
+        if (ex && (p.id === ex.id || !expecting)) await this.st.delete("expect");
+      }
       if (!(await this.inSession())) { await this.note("Standing back — Spotify is in charge until you use Ashflow"); return next(60000); }
       if (!p.playing) { await this.note("Paused"); return next(30000); }
       const left = p.dur - p.prog;

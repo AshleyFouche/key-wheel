@@ -103,3 +103,15 @@ ok("Previous plays the previous song and the brain leaves it alone", S.cur === w
 await call("/cmd", { key, action: "next" });
 ok("…and Next afterwards moves on normally", S.cur !== was18);
 console.log("total Spotify calls:", S.calls.length, "| played:", S.played.length);
+// 9) Play pressed in Ashflow: the app starts the track itself (after telling the brain) — session stays on,
+//    even if Spotify passes through a stray on the way; the brain then lines up Next as usual.
+{ await call("/cmd", { key, action: "expect", id: lib[400][0] });
+  startTrack(lib[401][0]); await runFor(3000);           // a stray flashes past while the app skips
+  startTrack(lib[400][0]); await runFor(5000);
+  const st = (await call("/sync", { key, libHash: "h" }))[1].state;
+  ok("Play from the app keeps the session on", st.session === true, st.sessionWhy);
+  const b9 = S.played.length; await runFor(DUR[S.cur] + 5000);
+  ok("…and the next track follows on its own", S.played.length > b9 && S.cur !== lib[400][0]); }
+// 10) without the heads-up, the same change still means you took over in Spotify
+{ startTrack(lib[402][0]); await runFor(30000);
+  const s10 = (await call("/sync", { key, libHash: "h" }))[1].state; ok("an unannounced change still steps back", s10.session === false, s10.sessionWhy + " / cur " + (s10.cur && s10.cur.title)); }

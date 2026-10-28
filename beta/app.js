@@ -676,7 +676,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.52";
+  const APP_VERSION = "2.53";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -992,8 +992,15 @@
   // command to wake Spotify when nothing is playing.
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   window.__kwTest = Object.assign(window.__kwTest || {}, { playNow: id => playNow(id) });   // used by automated checks only
+  async function brainExpect(id) {
+    const ac = new AbortController(), t = setTimeout(() => ac.abort(), 4000);
+    try { await fetch(HELPER + "/cmd", { method: "POST", signal: ac.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: helperKey, action: "expect", id }) }); }
+    catch (e) {} finally { clearTimeout(t); }
+  }
   async function playNow(id) {
-    if (brainMode()) return brainCmd({ action: "play", id });
+    // Play is always started by the app itself (it's open — you just tapped). The helper is only told, so it
+    // knows this was you and keeps lining up Next afterwards.
+    if (brainMode()) { engagedAt = Date.now(); await brainExpect(id); setTimeout(helperSync, 1500); }
     if (liveOn) {
       if (isLive()) { await liveRun(() => liveInsertNext(id)); await waitUpNext(id); await Spotify.next(); return; }
       await startLive(id); return;
@@ -2582,7 +2589,8 @@
     if (cmdBusy) { if (c.action === "next") cmdPending.push(c); else cmdPending = [c]; return; }
     cmdBusy = true;
     try {
-      const r = await fetch(HELPER + "/cmd", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({ key: helperKey }, c)) });
+      const ac = new AbortController(); setTimeout(() => ac.abort(), 15000);
+      const r = await fetch(HELPER + "/cmd", { method: "POST", signal: ac.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({ key: helperKey }, c)) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok && c.action === "play" && c.id) {
         // Helper couldn't start it — try from the app before giving up.

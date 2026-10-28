@@ -227,6 +227,7 @@ export class Brain {
     if (b.next !== undefined) await this.st.put("appNext", b.next);            // { id, for } — the app's #1 for the playing track
     if (b.plan) await this.st.put("plan", b.plan);
     if (b.engage) await this.startSession("you changed your queue in Ashflow");
+    else if (!(await this.inSession()) && (await this.get("handed", null))) await this.forgetHanded();   // clears leftovers like a week-old "Strobe"
     await this.st.put("seen", now);
     const al = await this.st.getAlarm(); if (!al || al - now > 20000) await this.st.setAlarm(now + 1000);
     const acts = (await this.get("acts", [])).filter(a => a.at > (b.since || 0));
@@ -291,7 +292,9 @@ export class Brain {
     return true;
   }
   async startSession(why) { const ss = await this.get("session", null); if (!ss || !ss.on) await this.log("Session on — " + why); await this.st.put("session", { on: true, at: Date.now(), why }); }
-  async endSession(why) { const ss = await this.get("session", null); if (ss && ss.on) await this.log("Stepped back — " + why); await this.st.put("session", { on: false, at: Date.now(), why }); }
+  async endSession(why) { const ss = await this.get("session", null); if (ss && ss.on) await this.log("Stepped back — " + why); await this.st.put("session", { on: false, at: Date.now(), why }); await this.forgetHanded(); }
+  // Drop any memory of a track we handed to Spotify — once we're not in charge, it's not ours to track.
+  async forgetHanded() { if (await this.get("handed", null)) await this.log("Forgot old hand-over"); for (const k of ["handed", "handedFor", "verified"]) await this.st.delete(k); }
 
   async onNewTrack(p, commanded) {
     const prev = await this.get("cur", null), handed = await this.get("handed", null);
@@ -301,7 +304,8 @@ export class Brain {
     const wasHeard = (await this.flowIds()).has(p.id);
     await this.act({ type: "play", id: p.id, title: p.title, artist: p.artist, at: Date.now() - p.prog });
     if (handed === p.id) { await this.st.put("handed", null); await this.st.put("handedFor", null); }
-    else if (handed) await this.st.put("handedFor", p.id);                      // still waiting in Spotify: it's this track's Next now
+    else if (handed && !commanded) await this.forgetHanded();                    // Spotify moved on without it: it's not "ours" any more
+    else if (handed) await this.st.put("handedFor", p.id);                      // mid-skip: still waiting in Spotify, it's this track's Next now
     // Something started that Ashflow didn't choose (not our Next, not a command): you're driving from Spotify now.
     // Step back — never skip it, never "correct" it.
     if (!commanded && handed !== p.id && prev && prev.id !== p.id && (await this.inSession())) {

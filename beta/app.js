@@ -676,7 +676,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.50";
+  const APP_VERSION = "2.51";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -758,13 +758,11 @@
     if (liveOn) lines.push("Live set: on" + (live.pl ? " · playlist …" + live.pl.slice(-6) + " · " + live.items.length + " tracks, playing #" + (live.cur + 1) : " · not started yet"));
     lines.push(`APP QUEUE: ${appQ.length} waiting${handed ? " · in Spotify: " + [handed, ...ahead].map(id => recOf(id, qMeta.get(id)).title).join(" → ") : ""}`);
     lines.push("Last device ASH//FLOW saw playing: " + (last ? "id …" + last.slice(-6) : "none yet"));
-    if (isLive()) {
-      try {
-        const up = (await Spotify.upNext()).filter(t => t.id !== np.id).slice(0, 5).map(t => t.title);
-        lines.push("SPOTIFY UP NEXT: " + (up.join(" · ") || "nothing"));
-        lines.push("APP UP NEXT:     " + (appQ.slice(0, 5).map(id => recOf(id, qMeta.get(id)).title).join(" · ") || "nothing"));
-      } catch (e) {}
-    }
+    try {
+      const up = (await Spotify.upNext()).filter(t => !np || t.id !== np.id).slice(0, 5).map(t => t.title);
+      lines.push("SPOTIFY SAYS UP NEXT (its queue, then the playlist): " + (up.join(" · ") || "nothing"));
+    } catch (e) { lines.push("SPOTIFY SAYS UP NEXT: couldn't ask — " + e.message); }
+    if (isLive()) lines.push("APP UP NEXT:     " + (appQ.slice(0, 5).map(id => recOf(id, qMeta.get(id)).title).join(" · ") || "nothing"));
     // Why suggestions look the way they do, for the track being mixed out of.
     try {
       const ref = mixRef(), cur = ref.rec;

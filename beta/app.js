@@ -676,7 +676,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.51";
+  const APP_VERSION = "2.52";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -991,6 +991,7 @@
   // So when something is already playing, queue the track and skip to it. Only use the direct
   // command to wake Spotify when nothing is playing.
   const sleep = ms => new Promise(r => setTimeout(r, ms));
+  window.__kwTest = Object.assign(window.__kwTest || {}, { playNow: id => playNow(id) });   // used by automated checks only
   async function playNow(id) {
     if (brainMode()) return brainCmd({ action: "play", id });
     if (liveOn) {
@@ -2583,6 +2584,10 @@
     try {
       const r = await fetch(HELPER + "/cmd", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({ key: helperKey }, c)) });
       const j = await r.json().catch(() => ({}));
+      if (!r.ok && c.action === "play" && c.id) {
+        // Helper couldn't start it — try from the app before giving up.
+        try { await Spotify.play(c.id); toast("Playing: " + recOf(c.id, qMeta.get(c.id)).title); setTimeout(pollNow, 800); return; } catch (e) {}
+      }
       if (!r.ok) {
         const msg = j.reason === "PREMIUM_REQUIRED" ? "Spotify refused (it says Premium is needed). If you have Premium, open the Spotify app, play/pause once, and try again."
           : j.reason === "NO_ACTIVE_DEVICE" || /no active device/i.test(j.error || "") ? "Spotify has no active device — start playback in the Spotify app once, then try again."
@@ -2592,9 +2597,17 @@
         if (c.action === "next") nextLog.push({ at: Date.now(), want: j.wanted, got: j.playing, how: "brain", strays: j.strays || 0, gotTitle: "" });
         if (nextLog.length > 10) nextLog.shift();
         applyBrain(j);
+        if (c.action === "play" && c.id && j.started === false) {
+          // The helper's play didn't take — start it from here instead (the app is open, so it can).
+          try { await Spotify.play(c.id); toast("Playing: " + recOf(c.id, qMeta.get(c.id)).title); setTimeout(pollNow, 800); }
+          catch (e) { playError(e); }
+        }
         if (j.strays) toast(`Skipped ${j.strays} stray ${j.strays === 1 ? "track" : "tracks"} Spotify had waiting`);
       }
-    } catch (e) { toast("Couldn't reach the helper — check your connection", 5000); }
+    } catch (e) {
+      if (c.action === "play" && c.id) { try { await Spotify.play(c.id); toast("Playing: " + recOf(c.id, qMeta.get(c.id)).title); } catch (e2) { playError(e2); } }
+      else toast("Couldn't reach the helper — check your connection", 5000);
+    }
     finally {
       cmdBusy = false; await pollNow(); helperSync();
       if (cmdPending.length) brainCmd(cmdPending.shift());

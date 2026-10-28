@@ -417,9 +417,12 @@ export class Brain {
       }
       if (b.action === "play" && b.id) {
         const handed = await this.get("handed", null);
+        if (p && p.device && p.device.id) await this.st.put("lastDev", p.device.id);
+        const dev = (p && p.device && p.device.id) || (await this.get("lastDev", null));
+        const playUrl = "/me/player/play" + (dev ? "?device_id=" + encodeURIComponent(dev) : "");
         if (!p || !p.playing || (p.device && p.device.type === "Smartphone" && handed)) {
-          // Start it directly. (On the iPhone with something already lined up, direct play is the only clean way.)
-          await this.sp("/me/player/play", { method: "PUT", body: JSON.stringify({ uris: ["spotify:track:" + b.id] }) });
+          // Start it directly, on the device Spotify was last using. (On the iPhone with something already lined up, direct play is the only clean way.)
+          await this.sp(playUrl, { method: "PUT", body: JSON.stringify({ uris: ["spotify:track:" + b.id] }) });
         } else if (p.device && p.device.type === "Smartphone") {
           // Direct play has knocked the iPhone off Spotify before: queue it and skip to it instead.
           await this.sp("/me/player/queue?uri=" + encodeURIComponent("spotify:track:" + b.id), { method: "POST" }); await sleep(250);
@@ -429,8 +432,12 @@ export class Brain {
         }
         const now = await this.waitChange(p ? p.id : null, 5000);
         if (now) await this.onNewTrack(now, true);
+        // Did it really start? (Spotify can accept the command while the speaker does nothing.)
+        const after = now || (await this.player().catch(() => null));
+        const started = !!(after && after.id === b.id && after.playing);
+        if (!started) await this.log("Play: Spotify accepted it but " + (after ? "is on " + after.title + (after.playing ? "" : " (paused)") : "nothing is playing") + " — the app will try itself");
         await this.st.put("cmdAt", Date.now()); await this.st.put("cmdTarget", now ? now.id : b.id); await this.st.setAlarm(Date.now() + 2000);
-        return this.json({ ok: true, playing: now && now.id, state: await this.view() });
+        return this.json({ ok: true, playing: after && after.id, started, state: await this.view() });
       }
       return this.json({ error: "unknown command" }, 400);
     } catch (e) {

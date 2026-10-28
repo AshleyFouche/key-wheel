@@ -253,15 +253,18 @@
   const setRepeat = st => api("/me/player/repeat?state=" + st, { method: "PUT" });
   const pause = () => api("/me/player/pause", { method: "PUT" });
   const resume = () => withDevice(dev => api("/me/player/play" + q(dev), { method: "PUT" }));
+  // The app can map a playing track to the ID it knows it by (Spotify sometimes relinks a song to another ID).
+  let canon = t => t;
+  const setCanon = fn => { canon = fn || (t => t); };
   async function nowPlaying() {
     const j = await api("/me/player/currently-playing");
     if (!j || !j.item || j.currently_playing_type !== "track") return j && j.is_playing !== undefined ? { playing: false, none: true } : null;
     const t = j.item;
-    return {
-      id: t.id, title: t.name, artist: (t.artists || []).map(a => a.name).join(", "),
+    return canon({
+      id: t.id, title: t.name, artist: (t.artists || []).map(a => a.name).join(", "), linked: t.linked_from && t.linked_from.id,
       art: t.album && t.album.images && t.album.images.length ? t.album.images[t.album.images.length - 1].url : "",
       playing: !!j.is_playing, progress: j.progress_ms || 0, duration: t.duration_ms || 0
-    };
+    });
   }
 
   const trackOf = t => t && t.type === "track" ? {
@@ -275,13 +278,15 @@
     const j = await api("/me/player");
     if (!j || !j.item) return null;
     const t = trackOf(j.item); if (!t) return null;
+    if (j.item.linked_from && j.item.linked_from.id) t.linked = j.item.linked_from.id;
+    canon(t);
     if (j.device && j.device.id) { try { localStorage.setItem("kwb.lastDevice", j.device.id); } catch (e) {} }
     return Object.assign(t, { context: j.context && j.context.uri ? j.context.uri : null, playing: !!j.is_playing, repeat: j.repeat_state || "off", shuffle: !!j.shuffle_state, progress: j.progress_ms || 0, at: Date.now(), device: j.device ? j.device.name : "", deviceType: j.device ? j.device.type : "",
       volume: j.device && typeof j.device.volume_percent === "number" ? j.device.volume_percent : null, canVolume: j.device ? j.device.supports_volume !== false : false });
   }
   async function upNext() {
     const j = await api("/me/player/queue");
-    return (j.queue || []).map(trackOf).filter(Boolean);
+    return (j.queue || []).map(trackOf).filter(Boolean).map(t => canon(t));
   }
   const seek = ms => api("/me/player/seek?position_ms=" + Math.max(0, Math.round(ms)), { method: "PUT" });
   const next = () => withDevice(dev => api("/me/player/next" + q(dev), { method: "POST" }));
@@ -369,7 +374,7 @@
     canLibrary, libContains, libSave, libRemove,
     setDeviceChooser: f => { chooser = f; },
     liveAdd, liveRemove, liveMove, liveReplace, playPlaylist,
-    canPlay, play, playContext, playList, setShuffle, setRepeat, queue, pause, resume, nowPlaying, devices,
+    setCanon, canPlay, play, playContext, playList, setShuffle, setRepeat, queue, pause, resume, nowPlaying, devices,
     login, handleRedirect, connected: () => !!store.get(), logout: () => store.clear(),
     me, myPlaylists, playlistTracks, createPlaylist, addTracks, configured: () => !!window.CONFIG.spotifyClientId
   };

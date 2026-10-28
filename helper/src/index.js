@@ -32,6 +32,9 @@ function relations(key) {
 const tdist = (a, b) => !a || !b ? 40 : Math.min(Math.abs(a - b), Math.abs(a - 2 * b) + 10, Math.abs(2 * a - b) + 10);
 
 // Library rows arrive compact: [id, key, tempo, family, styles[], playlists[]]
+// "Same song" key: Spotify sometimes plays a track under a different ID than the one queued (relinking).
+const nameKey = (title, artist) => (String(title || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "") + "|" +
+  String(artist || "").split(",")[0].normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, ""));
 const rowObj = r => ({ id: r[0], key: r[1], tempo: r[2] || 0, f: r[3] || null, s: r[4] || [], src: r[5] || [] });
 
 function dirBonus(dir, from, t, m, dt) {
@@ -139,7 +142,7 @@ export class Brain {
   async player() {
     const p = await this.sp("/me/player");
     if (!p || !p.item || p.item.type !== "track") return null;
-    return { id: p.item.id, title: p.item.name, artist: (p.item.artists || []).map(x => x.name).join(", "), dur: p.item.duration_ms, prog: p.progress_ms || 0, playing: !!p.is_playing, device: p.device || {}, at: Date.now(),
+    return { id: await this.canon(p.item), title: p.item.name, artist: (p.item.artists || []).map(x => x.name).join(", "), dur: p.item.duration_ms, prog: p.progress_ms || 0, playing: !!p.is_playing, device: p.device || {}, at: Date.now(),
       noSkip: !!(p.actions && p.actions.disallows && p.actions.disallows.skipping_next) };
   }
   // Spotify's up-next list: tracks queued by apps first, then the playlist it's playing from.
@@ -155,7 +158,27 @@ export class Brain {
     await this.sp("/me/player/play" + dev, { method: "PUT", body: JSON.stringify({ uris: ["spotify:track:" + target] }) });
     return "direct";
   }
-  async upNext() { const j = await this.sp("/me/player/queue"); return ((j && j.queue) || []).filter(t => t && t.id).map(t => t.id); }
+  async upNext() { const j = await this.sp("/me/player/queue"), out = []; for (const t of ((j && j.queue) || [])) if (t && t.id) out.push(await this.canon(t)); return out; }
+  // Map a Spotify track to the ID we know it by: if it's the same song (title + main artist) as one we chose, use our ID.
+  async canon(t) {
+    const names = await this.get("names", {});
+    if (t.linked_from && t.linked_from.id && names[t.linked_from.id]) return t.linked_from.id;
+    if (names[t.id] || !t.name) return t.id;
+    const k = nameKey(t.name, (t.artists || []).map(a => a.name).join(", "));
+    for (const id in names) if (names[id] === k) return id;
+    return t.id;
+  }
+  // Remember the title + artist of a track we're choosing, so we recognise it if Spotify relinks it.
+  async rememberName(id, title, artist) {
+    if (!id) return;
+    const names = await this.get("names", {});
+    if (names[id]) return;
+    if (!title) { try { const t = await this.sp("/tracks/" + encodeURIComponent(id)); title = t && t.name; artist = t && (t.artists || []).map(a => a.name).join(", "); } catch (e) { return; } }
+    if (!title) return;
+    names[id] = nameKey(title, artist);
+    const ks = Object.keys(names); if (ks.length > 120) for (const k of ks.slice(0, ks.length - 120)) delete names[k];
+    await this.st.put("names", names);
+  }
   async waitChange(fromId, ms = 5000) {
     const end = Date.now() + ms;
     while (Date.now() < end) { await sleep(350); const p = await this.player().catch(() => null); if (p && p.id !== fromId) return p; }
@@ -249,7 +272,8 @@ export class Brain {
   }
 
   // Which track should follow `curId`?
-  async decideNext(curId) {
+  async decideNext(curId) { const d = await this._decideNext(curId); if (d) await this.rememberName(d.id); return d; }
+  async _decideNext(curId) {
     const q = await this.get("queue", []);
     if (q.length && q[0] !== curId) return { id: q[0], why: "your queue" };
     const set = await this.get("settings", {});
@@ -399,6 +423,7 @@ export class Brain {
         // The app is about to start a track itself (you pressed Play). Don't mistake it for Spotify taking over.
         await this.startSession("you pressed play in Ashflow");
         await this.st.put("expect", { id: b.id, until: Date.now() + 30000 });
+        await this.rememberName(b.id, b.title, b.artist);
         if (b.next && b.next.id && b.next.for) await this.st.put("appNext", b.next);
         return this.json({ ok: true, state: await this.view() });
       }
@@ -423,6 +448,7 @@ export class Brain {
         return this.json({ ok: true, playing: now ? now.id : p && p.id, state: await this.view() });
       }
       if (b.action === "play" && b.id) {
+        await this.rememberName(b.id);
         const handed = await this.get("handed", null);
         if (p && p.device && p.device.id) await this.st.put("lastDev", p.device.id);
         const dev = (p && p.device && p.device.id) || (await this.get("lastDev", null));

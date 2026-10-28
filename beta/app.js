@@ -676,7 +676,7 @@
   // ---------- more ----------
   // ---------- version ----------
   // Bump with each release so it's clear which build the phone is running.
-  const APP_VERSION = "2.53";
+  const APP_VERSION = "2.54";
   $("appVer").textContent = "beta " + APP_VERSION;
 
   // ---------- search the whole Spotify catalogue ----------
@@ -1498,6 +1498,19 @@
       if (!raw.some(it => it.id === handed)) { handed = null; ahead = []; saveQ(); pump(); }
     } catch (e) {}
   }
+  // Spotify sometimes plays a song under a different ID than the one in your library ("relinking").
+  // Map it back by title + main artist, so it counts as played and isn't suggested again.
+  const nameKey = (title, artist) => (String(title || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "") + "|" +
+    String(artist || "").split(",")[0].normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, ""));
+  let byName = null, byNameN = -1;
+  Spotify.setCanon(t => {
+    if (!t || !t.id || byId.has(t.id)) return t;
+    if (t.linked && byId.has(t.linked)) { t.spotifyId = t.id; t.id = t.linked; return t; }
+    if (byNameN !== T.length) { byName = new Map(); T.forEach(r => { if (r.title) { const k = nameKey(r.title, r.artist); if (!byName.has(k)) byName.set(k, r.id); } }); byNameN = T.length; }
+    const hit = t.title && byName.get(nameKey(t.title, t.artist));
+    if (hit) { t.spotifyId = t.id; t.id = hit; }
+    return t;
+  });
   function recOf(id, fallback) { return byId.get(id) || Object.assign({ id, title: "Unknown track", artist: "", tempo: 0, key: null }, fallback || {}); }
   const qMeta = new Map();
   function paintQueue() {

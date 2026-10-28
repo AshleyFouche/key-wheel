@@ -115,3 +115,15 @@ console.log("total Spotify calls:", S.calls.length, "| played:", S.played.length
 // 10) without the heads-up, the same change still means you took over in Spotify
 { startTrack(lib[402][0]); await runFor(30000);
   const s10 = (await call("/sync", { key, libHash: "h" }))[1].state; ok("an unannounced change still steps back", s10.session === false, s10.sessionWhy + " / cur " + (s10.cur && s10.cur.title)); }
+// 11) Relinked track (your El Bandido): the brain hands over X, Spotify plays the same song under another ID.
+//     That's still ours: session stays on, it isn't handed over again, and the next track follows.
+{ S.relink = { [lib[500][0]]: "ZZrelinked500" }; S.queue = [];
+  const c11 = S.calls.length; await call("/cmd", { key, action: "expect", id: lib[499][0] }); startTrack(lib[499][0]); await runFor(3000);
+  await call("/sync", { key, libHash: "h", queue: [lib[500][0]], queueAt: clock() + 1, engage: true });
+  const b11 = S.played.length; await runFor(DUR[S.cur] + 8000);
+  const st = (await call("/sync", { key, libHash: "h" }))[1].state;
+  ok("relinked track counts as ours (session stays on)", S.played.includes("ZZrelinked500") && st.session === true, st.sessionWhy + " · played " + S.played.slice(b11).join(","));
+  const q500 = S.calls.slice(c11).filter(c => c.includes("queue?uri") && c.includes(lib[500][0])).length;
+  ok("…handed to Spotify only once", q500 === 1, q500 + " times");
+  const b11b = S.played.length; await runFor(200000 + 8000);
+  ok("…and the next track follows on its own", S.played.length > b11b && S.cur !== "ZZrelinked500", S.played.slice(b11b).join(",")); }
